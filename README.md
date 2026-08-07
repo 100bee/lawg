@@ -65,7 +65,13 @@ flowchart LR
 
 ### 1. 환경파일 준비
 
-저장소에는 API 키가 없는 로컬 실행용 `.env`가 준비되어 있습니다. OpenAI API를 사용하려면 다음 값만 변경합니다.
+예제 환경파일을 복사해 로컬 설정을 준비합니다. 기본값은 API 키 없이 실행되는 로컬 모드입니다.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+OpenAI API를 사용하려면 생성된 `.env`에서 다음 값을 변경합니다.
 
 ```env
 AI_PROVIDER=openai
