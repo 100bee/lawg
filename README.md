@@ -28,6 +28,7 @@ AI 서비스 운영 중 발생하는 API 오류, 문서 색인 실패, 검색 �
 - OpenAI Responses API 기반 근거 제한 답변
 - API Key, 이메일, IP, Bearer Token 마스킹
 - Golden Dataset 기반 `Recall@5`, `MRR`, 거절 정확도 측정
+- Vector·Keyword·Hybrid 검색 방식의 반복 비교 실험
 - Markdown/TXT 문서 업로드와 checksum 중복 방지
 
 ## 아키텍처
@@ -113,19 +114,21 @@ docker compose up --build -d
 | POST | `/api/chat` | Hybrid RAG 장애 분석 |
 | GET | `/api/traces/{trace_id}` | 질문별 실행 기록 |
 | POST | `/api/evaluations/run` | Golden Dataset 검색 평가 |
+| POST | `/api/evaluations/compare` | 검색 방식별 반복 비교 실험 |
 
-## 로컬 기준선
+## Retrieval 비교 실험
 
-`AI_PROVIDER=local`에서 12개 운영 문서와 14개 평가 질문으로 확인한 기준선입니다.
+`AI_PROVIDER=local`에서 12개 운영 문서와 14개 평가 질문을 사용해 각 검색 방식을 5회 반복 측정했습니다.
 
-| 지표 | 결과 |
-| --- | ---: |
-| Recall@5 | 100% |
-| MRR | 0.917 |
-| 거절 정확도 | 100% |
-| 평균 검색시간 | 약 11ms |
+| 검색 방식 | Recall@5 | MRR | 거절 정확도 | 평균 검색시간 |
+| --- | ---: | ---: | ---: | ---: |
+| Vector Only | 91.7% | 0.819 | 100% | 5.3ms |
+| **Keyword Only** | **100%** | **0.917** | **100%** | **4.3ms** |
+| Hybrid | **100%** | **0.917** | **100%** | 7.8ms |
 
-이 수치는 작은 가상 데이터셋의 개발 기준선이며 실제 운영 성능을 의미하지 않습니다. OpenAI 임베딩 적용 후 별도의 결과를 기록해야 합니다.
+현재 로컬 기준에서는 Keyword Only가 Hybrid와 같은 품질을 더 낮은 지연시간으로 달성해 추천 방식으로 선정됐습니다. Hybrid는 Vector Only보다 Recall@5가 8.3%p, MRR이 0.097 개선됐지만 Keyword Only보다 우수하지는 않았습니다. 자세한 방법, 실패 사례와 해석은 `docs/hybrid-retrieval-experiment.md`에 기록했습니다.
+
+이 결과는 기술 키워드가 많은 소규모 가상 데이터셋과 로컬 feature hashing 기준입니다. OpenAI 의미 임베딩을 적용한 뒤 패러프레이즈 질문을 추가해 다시 측정해야 Hybrid의 일반화 성능을 판단할 수 있습니다.
 
 ## 대표 시연 질문
 

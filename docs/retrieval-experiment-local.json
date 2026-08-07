@@ -1,0 +1,43 @@
+{
+  "experiment_id": "local-feature-hashing-v1",
+  "run_date": "2026-08-07",
+  "provider": "local",
+  "embedding": "feature-hashing",
+  "dataset": "evaluations.jsonl",
+  "documents": 12,
+  "cases": 14,
+  "answerable_cases": 12,
+  "refusal_cases": 2,
+  "top_k": 5,
+  "candidate_k": 20,
+  "repetitions": 5,
+  "hybrid_weights": {
+    "vector": 0.72,
+    "keyword": 0.28
+  },
+  "results": [
+    {
+      "retrieval_mode": "vector",
+      "recall_at_5": 0.916667,
+      "mrr": 0.819444,
+      "refusal_accuracy": 1.0,
+      "average_retrieval_ms": 5.3
+    },
+    {
+      "retrieval_mode": "keyword",
+      "recall_at_5": 1.0,
+      "mrr": 0.916667,
+      "refusal_accuracy": 1.0,
+      "average_retrieval_ms": 4.3
+    },
+    {
+      "retrieval_mode": "hybrid",
+      "recall_at_5": 1.0,
+      "mrr": 0.916667,
+      "refusal_accuracy": 1.0,
+      "average_retrieval_ms": 7.771
+    }
+  ],
+  "recommended_mode": "keyword",
+  "selection_policy": "Recall@K, MRR, refusal accuracy, then lower latency"
+}
