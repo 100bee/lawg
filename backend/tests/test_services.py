@@ -5,7 +5,10 @@ from app.services import ai
 from app.services.ai import embed_texts, generate_answer
 from app.services.answering import confidence_label
 from app.services.classifier import infer_incident_type
+from app.services.evaluation import select_recommended_mode
 from app.services.redaction import mask_sensitive_text
+from app.services.retrieval import calculate_retrieval_score
+from app.schemas import EvaluationResponse
 
 
 def test_masks_sensitive_values() -> None:
@@ -38,6 +41,36 @@ def test_confidence_thresholds() -> None:
     assert confidence_label(0.4) == "medium"
     assert confidence_label(0.1) == "low"
     assert confidence_label(0.0) == "insufficient"
+
+
+def test_retrieval_modes_use_expected_scores() -> None:
+    assert calculate_retrieval_score("vector", 0.8, 0.4) == 0.8
+    assert calculate_retrieval_score("keyword", 0.8, 0.4) == 0.4
+    assert math.isclose(calculate_retrieval_score("hybrid", 0.8, 0.4), 0.688)
+
+
+def test_recommended_mode_prioritizes_quality_before_latency() -> None:
+    common = {
+        "cases": 14,
+        "refusal_accuracy": 1.0,
+        "results": [],
+    }
+    vector = EvaluationResponse(
+        retrieval_mode="vector",
+        recall_at_k=0.8,
+        mrr=0.7,
+        average_retrieval_ms=4,
+        **common,
+    )
+    hybrid = EvaluationResponse(
+        retrieval_mode="hybrid",
+        recall_at_k=1.0,
+        mrr=0.9,
+        average_retrieval_ms=12,
+        **common,
+    )
+
+    assert select_recommended_mode([vector, hybrid]) == "hybrid"
 
 
 def test_openai_answer_uses_responses_api(monkeypatch) -> None:

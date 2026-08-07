@@ -49,12 +49,33 @@ type ChatResult = {
   };
 };
 
+type RetrievalMode = "vector" | "keyword" | "hybrid";
+
 type EvaluationResult = {
+  retrieval_mode: RetrievalMode;
   cases: number;
   recall_at_k: number;
   mrr: number;
   refusal_accuracy: number;
   average_retrieval_ms: number;
+};
+
+type RetrievalComparison = {
+  dataset: string;
+  top_k: number;
+  cases: number;
+  repetitions: number;
+  vector_weight: number;
+  keyword_weight: number;
+  recommended_mode: RetrievalMode;
+  recommendation_policy: string;
+  results: EvaluationResult[];
+};
+
+const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
+  vector: "Vector Only",
+  keyword: "Keyword Only",
+  hybrid: "Hybrid",
 };
 
 const QUICK_QUESTIONS = [
@@ -86,7 +107,7 @@ export default function Home() {
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
   const [question, setQuestion] = useState(QUICK_QUESTIONS[0]);
   const [chatResult, setChatResult] = useState<ChatResult | null>(null);
-  const [evaluation, setEvaluation] = useState<EvaluationResult | null>(null);
+  const [comparison, setComparison] = useState<RetrievalComparison | null>(null);
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
@@ -163,8 +184,8 @@ export default function Home() {
     setEvaluating(true);
     setError(null);
     try {
-      const result = await requestApi<EvaluationResult>("/api/evaluations/run", { method: "POST" });
-      setEvaluation(result);
+      const result = await requestApi<RetrievalComparison>("/api/evaluations/compare", { method: "POST" });
+      setComparison(result);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "평가 실행에 실패했습니다.");
     } finally {
@@ -234,7 +255,7 @@ export default function Home() {
             <h1>장애 대응 Copilot</h1>
           </div>
           <button className="evaluationButton" onClick={runEvaluation} disabled={evaluating}>
-            {evaluating ? "평가 실행 중..." : "Golden Set 평가"}
+            {evaluating ? "비교 실험 중..." : "Retrieval A/B 실험"}
           </button>
         </header>
 
@@ -361,17 +382,34 @@ export default function Home() {
               </div>
             </section>
 
-            {evaluation && (
+            {comparison && (
               <section className="evaluationCard">
                 <div className="cardTitle">
-                  <div><span>QUALITY</span><h3>Golden Set</h3></div>
-                  <strong>{evaluation.cases} cases</strong>
+                  <div><span>RETRIEVAL EXPERIMENT</span><h3>Golden Set 비교</h3></div>
+                  <strong>{comparison.cases} × {comparison.repetitions}</strong>
                 </div>
-                <div className="evaluationMetrics">
-                  <div><span>Recall@5</span><strong>{(evaluation.recall_at_k * 100).toFixed(1)}%</strong></div>
-                  <div><span>MRR</span><strong>{evaluation.mrr.toFixed(3)}</strong></div>
-                  <div><span>Refusal</span><strong>{(evaluation.refusal_accuracy * 100).toFixed(1)}%</strong></div>
+                <div className="experimentModes">
+                  {comparison.results.map((result) => {
+                    const recommended = result.retrieval_mode === comparison.recommended_mode;
+                    return (
+                      <div className={`experimentMode ${recommended ? "recommendedMode" : ""}`} key={result.retrieval_mode}>
+                        <div className="modeHeading">
+                          <strong>{RETRIEVAL_LABELS[result.retrieval_mode]}</strong>
+                          {recommended && <span>RECOMMENDED</span>}
+                        </div>
+                        <div className="modeMetrics">
+                          <div><span>Recall@{comparison.top_k}</span><strong>{(result.recall_at_k * 100).toFixed(1)}%</strong></div>
+                          <div><span>MRR</span><strong>{result.mrr.toFixed(3)}</strong></div>
+                          <div><span>Refusal</span><strong>{(result.refusal_accuracy * 100).toFixed(1)}%</strong></div>
+                          <div><span>Latency</span><strong>{result.average_retrieval_ms.toFixed(1)}ms</strong></div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+                <p className="recommendationNote">
+                  선택 기준 · {comparison.recommendation_policy}
+                </p>
               </section>
             )}
           </aside>
@@ -380,4 +418,3 @@ export default function Home() {
     </main>
   );
 }
-

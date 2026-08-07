@@ -1,7 +1,7 @@
 import uuid
 from time import perf_counter
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -16,11 +16,12 @@ from app.schemas import (
     DocumentResponse,
     EvaluationResponse,
     HealthResponse,
+    RetrievalComparisonResponse,
     SeedResponse,
 )
 from app.services.answering import answer_with_evidence
 from app.services.classifier import infer_incident_type
-from app.services.evaluation import run_evaluation
+from app.services.evaluation import run_evaluation, run_retrieval_comparison
 from app.services.ingestion import ingest_markdown_text, ingest_sample_documents
 from app.services.redaction import mask_sensitive_text
 from app.services.retrieval import retrieve_chunks
@@ -183,3 +184,14 @@ def evaluate(database: Session = Depends(get_db)) -> EvaluationResponse:
     if not document_count:
         raise HTTPException(status_code=409, detail="먼저 샘플 문서를 색인해 주세요.")
     return run_evaluation(database)
+
+
+@router.post("/evaluations/compare", response_model=RetrievalComparisonResponse)
+def compare_retrieval(
+    repetitions: int = Query(default=3, ge=1, le=10),
+    database: Session = Depends(get_db),
+) -> RetrievalComparisonResponse:
+    document_count = database.scalar(select(func.count()).select_from(Document))
+    if not document_count:
+        raise HTTPException(status_code=409, detail="먼저 샘플 문서를 색인해 주세요.")
+    return run_retrieval_comparison(database, repetitions=repetitions)

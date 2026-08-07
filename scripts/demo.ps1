@@ -20,7 +20,8 @@ Write-Host "API status: $($health.status) / provider: $($health.provider)"
 $seed = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/documents/seed"
 Write-Host "Documents: $($seed.documents.Count), indexed: $($seed.indexed), skipped: $($seed.skipped)"
 
-$evaluation = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/evaluations/run"
-Write-Host "Recall@5: $([math]::Round($evaluation.recall_at_k * 100, 1))%"
-Write-Host "MRR: $([math]::Round($evaluation.mrr, 3))"
-Write-Host "Refusal accuracy: $([math]::Round($evaluation.refusal_accuracy * 100, 1))%"
+$comparison = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/evaluations/compare"
+foreach ($result in $comparison.results) {
+    Write-Host "[$($result.retrieval_mode)] Recall@5: $([math]::Round($result.recall_at_k * 100, 1))%, MRR: $([math]::Round($result.mrr, 3)), Refusal: $([math]::Round($result.refusal_accuracy * 100, 1))%, Latency: $([math]::Round($result.average_retrieval_ms, 1))ms"
+}
+Write-Host "Recommended mode: $($comparison.recommended_mode)"

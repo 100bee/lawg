@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     chunk_overlap: int = 120
     retrieval_top_k: int = 5
     retrieval_candidate_k: int = 20
+    hybrid_vector_weight: float = 0.72
+    hybrid_keyword_weight: float = 0.28
     minimum_grounding_score: float = 0.08
     prompt_version: str = "ragops-v1"
     sample_data_dir: str = "data/incidents"

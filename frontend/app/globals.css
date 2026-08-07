@@ -172,10 +172,18 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none !important; 
 .sourceItem p { margin: 0; padding: 0 15px 15px 54px; color: #aab6c2; font-size: 10px; line-height: 1.65; white-space: pre-wrap; max-height: 160px; overflow: auto; }
 .emptySources { padding: 20px; margin: 0; }
 
-.evaluationMetrics { padding: 14px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
-.evaluationMetrics div { border: 1px solid var(--line); padding: 10px; display: grid; gap: 6px; }
-.evaluationMetrics span { color: var(--muted); font: 8px monospace; }
-.evaluationMetrics strong { color: var(--cyan); font: 13px monospace; }
+.experimentModes { padding: 12px; display: grid; gap: 9px; }
+.experimentMode { border: 1px solid var(--line); background: rgba(255,255,255,.012); padding: 11px; }
+.recommendedMode { border-color: rgba(65,226,203,.42); background: var(--cyan-soft); }
+.modeHeading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.modeHeading strong { font-size: 11px; }
+.modeHeading span { color: var(--cyan); border: 1px solid rgba(65,226,203,.35); padding: 3px 5px; font: 7px monospace; letter-spacing: .08em; }
+.modeMetrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+.modeMetrics div { min-width: 0; display: grid; gap: 5px; }
+.modeMetrics span { color: var(--muted); font: 7px monospace; white-space: nowrap; }
+.modeMetrics strong { font: 10px monospace; overflow-wrap: anywhere; }
+.recommendedMode .modeMetrics strong { color: var(--cyan); }
+.recommendationNote { color: var(--muted); border-top: 1px solid var(--line); margin: 0; padding: 12px 14px; font-size: 9px; line-height: 1.55; }
 
 @media (max-width: 1120px) {
   .appShell { grid-template-columns: 230px minmax(0, 1fr); }
@@ -194,4 +202,3 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none !important; 
   .heroVisual { display: none; }
   .quickQuestions, .debugColumn { grid-template-columns: 1fr; }
 }
-

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -86,6 +87,7 @@ class EvaluationCaseResult(BaseModel):
 
 
 class EvaluationResponse(BaseModel):
+    retrieval_mode: Literal["vector", "keyword", "hybrid"]
     cases: int
     recall_at_k: float
     mrr: float
@@ -93,3 +95,14 @@ class EvaluationResponse(BaseModel):
     average_retrieval_ms: float
     results: list[EvaluationCaseResult]
 
+
+class RetrievalComparisonResponse(BaseModel):
+    dataset: str
+    top_k: int
+    cases: int
+    repetitions: int
+    vector_weight: float
+    keyword_weight: float
+    recommended_mode: Literal["vector", "keyword", "hybrid"]
+    recommendation_policy: str
+    results: list[EvaluationResponse]

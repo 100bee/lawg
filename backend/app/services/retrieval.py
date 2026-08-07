@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import re
 from time import perf_counter
+from typing import Literal
 import uuid
 
 from sqlalchemy import func, select
@@ -9,6 +10,10 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import Document, DocumentChunk
 from app.services.ai import embed_texts
+
+
+RetrievalMode = Literal["vector", "keyword", "hybrid"]
+RETRIEVAL_MODES: tuple[RetrievalMode, ...] = ("vector", "keyword", "hybrid")
 
 
 KEYWORD_PATTERN = re.compile(r"[A-Za-z0-9가-힣_./:-]{2,}")
@@ -44,6 +49,7 @@ class RetrievedChunk:
 class RetrievalResult:
     chunks: list[RetrievedChunk]
     elapsed_ms: int
+    mode: RetrievalMode
 
 
 def _filters(statement, service: str | None, incident_type: str | None):
@@ -63,41 +69,62 @@ def _keyword_search_text(question: str) -> str:
     return " OR ".join(tokens[:12])
 
 
+def calculate_retrieval_score(
+    mode: RetrievalMode,
+    vector_score: float,
+    keyword_score: float,
+) -> float:
+    if mode == "vector":
+        return vector_score
+    if mode == "keyword":
+        return keyword_score
+    return (
+        settings.hybrid_vector_weight * vector_score
+        + settings.hybrid_keyword_weight * keyword_score
+    )
+
+
 def retrieve_chunks(
     database: Session,
     question: str,
     service: str | None = None,
     incident_type: str | None = None,
     top_k: int | None = None,
+    mode: RetrievalMode = "hybrid",
 ) -> RetrievalResult:
     started_at = perf_counter()
     requested_top_k = top_k or settings.retrieval_top_k
-    query_embedding = embed_texts([question])[0]
+    vector_rows = []
+    keyword_rows = []
 
-    distance = DocumentChunk.embedding.cosine_distance(query_embedding)
-    vector_statement = (
-        select(DocumentChunk, Document, (1 - distance).label("vector_score"))
-        .join(Document, Document.id == DocumentChunk.document_id)
-        .order_by(distance)
-        .limit(settings.retrieval_candidate_k)
-    )
-    vector_statement = _filters(vector_statement, service, incident_type)
-    vector_rows = database.execute(vector_statement).all()
+    if mode in ("vector", "hybrid"):
+        query_embedding = embed_texts([question])[0]
+        distance = DocumentChunk.embedding.cosine_distance(query_embedding)
+        vector_statement = (
+            select(DocumentChunk, Document, (1 - distance).label("vector_score"))
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .order_by(distance)
+            .limit(settings.retrieval_candidate_k)
+        )
+        vector_statement = _filters(vector_statement, service, incident_type)
+        vector_rows = database.execute(vector_statement).all()
 
-    keyword_query = func.websearch_to_tsquery("simple", _keyword_search_text(question))
-    keyword_rank = func.ts_rank_cd(
-        func.to_tsvector("simple", DocumentChunk.content),
-        keyword_query,
-    )
-    keyword_statement = (
-        select(DocumentChunk, Document, keyword_rank.label("keyword_score"))
-        .join(Document, Document.id == DocumentChunk.document_id)
-        .where(keyword_rank > 0)
-        .order_by(keyword_rank.desc())
-        .limit(settings.retrieval_candidate_k)
-    )
-    keyword_statement = _filters(keyword_statement, service, incident_type)
-    keyword_rows = database.execute(keyword_statement).all()
+    keyword_search_text = _keyword_search_text(question)
+    if mode in ("keyword", "hybrid") and keyword_search_text:
+        keyword_query = func.websearch_to_tsquery("simple", keyword_search_text)
+        keyword_rank = func.ts_rank_cd(
+            func.to_tsvector("simple", DocumentChunk.content),
+            keyword_query,
+        )
+        keyword_statement = (
+            select(DocumentChunk, Document, keyword_rank.label("keyword_score"))
+            .join(Document, Document.id == DocumentChunk.document_id)
+            .where(keyword_rank > 0)
+            .order_by(keyword_rank.desc())
+            .limit(settings.retrieval_candidate_k)
+        )
+        keyword_statement = _filters(keyword_statement, service, incident_type)
+        keyword_rows = database.execute(keyword_statement).all()
 
     candidates: dict[uuid.UUID, dict] = {}
     for chunk, document, vector_score in vector_rows:
@@ -130,7 +157,7 @@ def retrieve_chunks(
         document = candidate["document"]
         vector_score = candidate["vector_score"]
         keyword_score = candidate["keyword_score"]
-        combined_score = 0.72 * vector_score + 0.28 * keyword_score
+        combined_score = calculate_retrieval_score(mode, vector_score, keyword_score)
         ranked.append(
             RetrievedChunk(
                 id=chunk.id,
@@ -148,4 +175,4 @@ def retrieve_chunks(
 
     ranked.sort(key=lambda item: item.score, reverse=True)
     elapsed_ms = round((perf_counter() - started_at) * 1000)
-    return RetrievalResult(chunks=ranked[:requested_top_k], elapsed_ms=elapsed_ms)
+    return RetrievalResult(chunks=ranked[:requested_top_k], elapsed_ms=elapsed_ms, mode=mode)
