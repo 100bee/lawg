@@ -1,0 +1,1300 @@
+{
+  "dataset": "evaluations.jsonl:all",
+  "top_k": 5,
+  "cases": 20,
+  "repetitions": 1,
+  "vector_weight": 0.72,
+  "keyword_weight": 0.28,
+  "recommended_mode": "vector",
+  "recommendation_policy": "Recall@K, MRR, refusal accuracy 순으로 우선하고 동률이면 검색시간이 짧은 방식을 선택",
+  "results": [
+    {
+      "retrieval_mode": "vector",
+      "cases": 20,
+      "recall_at_k": 1.0,
+      "mrr": 1.0,
+      "refusal_accuracy": 0.75,
+      "average_retrieval_ms": 4.35,
+      "answerable_cases": 15,
+      "unanswerable_cases": 5,
+      "false_acceptance_rate": 1.0,
+      "false_refusal_rate": 0.0,
+      "results": [
+        {
+          "case_id": "dev-01",
+          "category": "direct",
+          "question": "OpenAI API 429 오류가 갑자기 증가했어. 재시도는 어떻게 해야 해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "response-latency-runbook.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-02",
+          "category": "direct",
+          "question": "배포 후 모든 생성 요청이 401 invalid_api_key로 실패해",
+          "expected_documents": [
+            "api-auth-401-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-auth-401-runbook.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "database-pool-exhaustion.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-03",
+          "category": "direct",
+          "question": "업로드는 성공했는데 문서 상태가 processing에서 멈추고 검색되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "ingestion-worker-stuck-postmortem.md",
+            "duplicate-indexing-runbook.md",
+            "stale-document-filter.md",
+            "embedding-model-mismatch.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-04",
+          "category": "direct",
+          "question": "같은 문서 출처가 여러 번 나오고 재업로드마다 청크 수가 증가해",
+          "expected_documents": [
+            "duplicate-indexing-runbook.md"
+          ],
+          "retrieved_documents": [
+            "duplicate-indexing-runbook.md",
+            "retrieval-chunking-quality.md",
+            "token-cost-spike-postmortem.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-05",
+          "category": "direct",
+          "question": "임베딩 모델을 바꾼 뒤 기존 문서가 검색 결과에서 사라졌어",
+          "expected_documents": [
+            "embedding-model-mismatch.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "stale-document-filter.md",
+            "duplicate-indexing-runbook.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-06",
+          "category": "direct",
+          "question": "유사도 점수는 높은데 너무 긴 엉뚱한 청크가 검색돼",
+          "expected_documents": [
+            "retrieval-chunking-quality.md"
+          ],
+          "retrieved_documents": [
+            "retrieval-chunking-quality.md",
+            "embedding-model-mismatch.md",
+            "duplicate-indexing-runbook.md",
+            "token-cost-spike-postmortem.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-07",
+          "category": "direct",
+          "question": "최신 버전 질문인데 deprecated된 과거 운영 문서가 먼저 검색돼",
+          "expected_documents": [
+            "stale-document-filter.md"
+          ],
+          "retrieved_documents": [
+            "stale-document-filter.md",
+            "duplicate-indexing-runbook.md",
+            "embedding-model-mismatch.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "retrieval-chunking-quality.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-08",
+          "category": "direct",
+          "question": "문서가 늘어난 뒤 pgvector 쿼리 p95가 느려지고 CPU가 높아졌어",
+          "expected_documents": [
+            "pgvector-slow-query.md"
+          ],
+          "retrieved_documents": [
+            "pgvector-slow-query.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "embedding-model-mismatch.md",
+            "token-cost-spike-postmortem.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-09",
+          "category": "direct",
+          "question": "배포 후 질문 수는 같은데 입력 토큰 비용이 두 배가 됐어",
+          "expected_documents": [
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "token-cost-spike-postmortem.md",
+            "embedding-model-mismatch.md",
+            "duplicate-indexing-runbook.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-10",
+          "category": "direct",
+          "question": "RAG 응답이 느린데 검색과 모델 중 어디가 병목인지 확인하고 싶어",
+          "expected_documents": [
+            "response-latency-runbook.md"
+          ],
+          "retrieved_documents": [
+            "response-latency-runbook.md",
+            "pgvector-slow-query.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "token-cost-spike-postmortem.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-11",
+          "category": "direct",
+          "question": "pool timeout과 too many connections 오류가 간헐적으로 발생해",
+          "expected_documents": [
+            "database-pool-exhaustion.md"
+          ],
+          "retrieved_documents": [
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "response-latency-runbook.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-12",
+          "category": "direct",
+          "question": "근거가 없는 장애 질문을 받으면 어떤 정보를 추가로 요청해야 해?",
+          "expected_documents": [
+            "insufficient-evidence-policy.md"
+          ],
+          "retrieved_documents": [
+            "insufficient-evidence-policy.md",
+            "response-latency-runbook.md",
+            "stale-document-filter.md",
+            "token-cost-spike-postmortem.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-13",
+          "category": "out_of_domain",
+          "question": "사무실 프린터에 종이가 걸렸을 때 토너를 어떻게 교체해?",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "token-cost-spike-postmortem.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "retrieval-chunking-quality.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "dev-14",
+          "category": "out_of_domain",
+          "question": "직원 연차 휴가 승인 규정과 경조사 휴가 일수를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "insufficient-evidence-policy.md",
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-01",
+          "category": "paraphrase",
+          "question": "요청이 몰릴 때 외부 모델이 호출을 거부해. 바로 다시 보내도 계속 실패해",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "database-pool-exhaustion.md",
+            "token-cost-spike-postmortem.md",
+            "api-auth-401-runbook.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-02",
+          "category": "paraphrase",
+          "question": "파일을 올린 뒤 오랫동안 처리 중이라고만 나오고 질문에 내용이 반영되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "ingestion-worker-stuck-postmortem.md",
+            "duplicate-indexing-runbook.md",
+            "insufficient-evidence-policy.md",
+            "response-latency-runbook.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-03",
+          "category": "hard_negative",
+          "question": "API 제공자의 주식 배당 기준일을 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "insufficient-evidence-policy.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-04",
+          "category": "hard_negative",
+          "question": "OpenAI API 429 오류 당시 고객사별 실제 피해 금액과 보상 승인자를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "token-cost-spike-postmortem.md",
+            "database-pool-exhaustion.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-05",
+          "category": "hard_negative",
+          "question": "pgvector 관리자의 생일과 개인 전화번호를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "pgvector-slow-query.md",
+            "embedding-model-mismatch.md",
+            "stale-document-filter.md",
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-06",
+          "category": "multi_document",
+          "question": "API 429 오류가 늘고 입력 토큰 비용도 두 배가 됐어. 재시도와 비용을 각각 어떻게 점검해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "token-cost-spike-postmortem.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        }
+      ]
+    },
+    {
+      "retrieval_mode": "keyword",
+      "cases": 20,
+      "recall_at_k": 0.9333333333333333,
+      "mrr": 0.8166666666666667,
+      "refusal_accuracy": 0.8,
+      "average_retrieval_ms": 1.75,
+      "answerable_cases": 15,
+      "unanswerable_cases": 5,
+      "false_acceptance_rate": 0.2,
+      "false_refusal_rate": 0.2,
+      "results": [
+        {
+          "case_id": "dev-01",
+          "category": "direct",
+          "question": "OpenAI API 429 오류가 갑자기 증가했어. 재시도는 어떻게 해야 해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-02",
+          "category": "direct",
+          "question": "배포 후 모든 생성 요청이 401 invalid_api_key로 실패해",
+          "expected_documents": [
+            "api-auth-401-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "insufficient-evidence-policy.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-03",
+          "category": "direct",
+          "question": "업로드는 성공했는데 문서 상태가 processing에서 멈추고 검색되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "ingestion-worker-stuck-postmortem.md",
+            "database-pool-exhaustion.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-04",
+          "category": "direct",
+          "question": "같은 문서 출처가 여러 번 나오고 재업로드마다 청크 수가 증가해",
+          "expected_documents": [
+            "duplicate-indexing-runbook.md"
+          ],
+          "retrieved_documents": [
+            "duplicate-indexing-runbook.md",
+            "retrieval-chunking-quality.md",
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-05",
+          "category": "direct",
+          "question": "임베딩 모델을 바꾼 뒤 기존 문서가 검색 결과에서 사라졌어",
+          "expected_documents": [
+            "embedding-model-mismatch.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "pgvector-slow-query.md",
+            "stale-document-filter.md",
+            "retrieval-chunking-quality.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-06",
+          "category": "direct",
+          "question": "유사도 점수는 높은데 너무 긴 엉뚱한 청크가 검색돼",
+          "expected_documents": [
+            "retrieval-chunking-quality.md"
+          ],
+          "retrieved_documents": [
+            "retrieval-chunking-quality.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-07",
+          "category": "direct",
+          "question": "최신 버전 질문인데 deprecated된 과거 운영 문서가 먼저 검색돼",
+          "expected_documents": [
+            "stale-document-filter.md"
+          ],
+          "retrieved_documents": [
+            "stale-document-filter.md",
+            "embedding-model-mismatch.md",
+            "retrieval-chunking-quality.md",
+            "api-auth-401-runbook.md",
+            "insufficient-evidence-policy.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-08",
+          "category": "direct",
+          "question": "문서가 늘어난 뒤 pgvector 쿼리 p95가 느려지고 CPU가 높아졌어",
+          "expected_documents": [
+            "pgvector-slow-query.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "pgvector-slow-query.md",
+            "insufficient-evidence-policy.md",
+            "retrieval-chunking-quality.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 0.5,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-09",
+          "category": "direct",
+          "question": "배포 후 질문 수는 같은데 입력 토큰 비용이 두 배가 됐어",
+          "expected_documents": [
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "embedding-model-mismatch.md",
+            "insufficient-evidence-policy.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-10",
+          "category": "direct",
+          "question": "RAG 응답이 느린데 검색과 모델 중 어디가 병목인지 확인하고 싶어",
+          "expected_documents": [
+            "response-latency-runbook.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "response-latency-runbook.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 0.5,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-11",
+          "category": "direct",
+          "question": "pool timeout과 too many connections 오류가 간헐적으로 발생해",
+          "expected_documents": [
+            "database-pool-exhaustion.md"
+          ],
+          "retrieved_documents": [
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-12",
+          "category": "direct",
+          "question": "근거가 없는 장애 질문을 받으면 어떤 정보를 추가로 요청해야 해?",
+          "expected_documents": [
+            "insufficient-evidence-policy.md"
+          ],
+          "retrieved_documents": [
+            "insufficient-evidence-policy.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "retrieval-chunking-quality.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": false,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "dev-13",
+          "category": "out_of_domain",
+          "question": "사무실 프린터에 종이가 걸렸을 때 토너를 어떻게 교체해?",
+          "expected_documents": [],
+          "retrieved_documents": [],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": false,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-14",
+          "category": "out_of_domain",
+          "question": "직원 연차 휴가 승인 규정과 경조사 휴가 일수를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": false,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-01",
+          "category": "paraphrase",
+          "question": "요청이 몰릴 때 외부 모델이 호출을 거부해. 바로 다시 보내도 계속 실패해",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "database-pool-exhaustion.md",
+            "api-auth-401-runbook.md",
+            "duplicate-indexing-runbook.md",
+            "api-429-rate-limit-runbook.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 0.25,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": false,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-02",
+          "category": "paraphrase",
+          "question": "파일을 올린 뒤 오랫동안 처리 중이라고만 나오고 질문에 내용이 반영되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "duplicate-indexing-runbook.md",
+            "retrieval-chunking-quality.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": true,
+          "predicted_answerable": false,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-03",
+          "category": "hard_negative",
+          "question": "API 제공자의 주식 배당 기준일을 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": false,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-04",
+          "category": "hard_negative",
+          "question": "OpenAI API 429 오류 당시 고객사별 실제 피해 금액과 보상 승인자를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "insufficient-evidence-policy.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-05",
+          "category": "hard_negative",
+          "question": "pgvector 관리자의 생일과 개인 전화번호를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": false,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-06",
+          "category": "multi_document",
+          "question": "API 429 오류가 늘고 입력 토큰 비용도 두 배가 됐어. 재시도와 비용을 각각 어떻게 점검해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "database-pool-exhaustion.md",
+            "api-auth-401-runbook.md",
+            "token-cost-spike-postmortem.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        }
+      ]
+    },
+    {
+      "retrieval_mode": "hybrid",
+      "cases": 20,
+      "recall_at_k": 1.0,
+      "mrr": 0.8777777777777778,
+      "refusal_accuracy": 0.75,
+      "average_retrieval_ms": 3.95,
+      "answerable_cases": 15,
+      "unanswerable_cases": 5,
+      "false_acceptance_rate": 1.0,
+      "false_refusal_rate": 0.0,
+      "results": [
+        {
+          "case_id": "dev-01",
+          "category": "direct",
+          "question": "OpenAI API 429 오류가 갑자기 증가했어. 재시도는 어떻게 해야 해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "response-latency-runbook.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-02",
+          "category": "direct",
+          "question": "배포 후 모든 생성 요청이 401 invalid_api_key로 실패해",
+          "expected_documents": [
+            "api-auth-401-runbook.md"
+          ],
+          "retrieved_documents": [
+            "api-auth-401-runbook.md",
+            "api-429-rate-limit-runbook.md",
+            "database-pool-exhaustion.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-03",
+          "category": "direct",
+          "question": "업로드는 성공했는데 문서 상태가 processing에서 멈추고 검색되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "ingestion-worker-stuck-postmortem.md",
+            "database-pool-exhaustion.md",
+            "duplicate-indexing-runbook.md",
+            "stale-document-filter.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-04",
+          "category": "direct",
+          "question": "같은 문서 출처가 여러 번 나오고 재업로드마다 청크 수가 증가해",
+          "expected_documents": [
+            "duplicate-indexing-runbook.md"
+          ],
+          "retrieved_documents": [
+            "duplicate-indexing-runbook.md",
+            "retrieval-chunking-quality.md",
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "embedding-model-mismatch.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-05",
+          "category": "direct",
+          "question": "임베딩 모델을 바꾼 뒤 기존 문서가 검색 결과에서 사라졌어",
+          "expected_documents": [
+            "embedding-model-mismatch.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "stale-document-filter.md",
+            "pgvector-slow-query.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-06",
+          "category": "direct",
+          "question": "유사도 점수는 높은데 너무 긴 엉뚱한 청크가 검색돼",
+          "expected_documents": [
+            "retrieval-chunking-quality.md"
+          ],
+          "retrieved_documents": [
+            "retrieval-chunking-quality.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "embedding-model-mismatch.md",
+            "duplicate-indexing-runbook.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-07",
+          "category": "direct",
+          "question": "최신 버전 질문인데 deprecated된 과거 운영 문서가 먼저 검색돼",
+          "expected_documents": [
+            "stale-document-filter.md"
+          ],
+          "retrieved_documents": [
+            "stale-document-filter.md",
+            "embedding-model-mismatch.md",
+            "retrieval-chunking-quality.md",
+            "duplicate-indexing-runbook.md",
+            "insufficient-evidence-policy.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-08",
+          "category": "direct",
+          "question": "문서가 늘어난 뒤 pgvector 쿼리 p95가 느려지고 CPU가 높아졌어",
+          "expected_documents": [
+            "pgvector-slow-query.md"
+          ],
+          "retrieved_documents": [
+            "pgvector-slow-query.md",
+            "embedding-model-mismatch.md",
+            "stale-document-filter.md",
+            "retrieval-chunking-quality.md",
+            "insufficient-evidence-policy.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-09",
+          "category": "direct",
+          "question": "배포 후 질문 수는 같은데 입력 토큰 비용이 두 배가 됐어",
+          "expected_documents": [
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "embedding-model-mismatch.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "api-auth-401-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-10",
+          "category": "direct",
+          "question": "RAG 응답이 느린데 검색과 모델 중 어디가 병목인지 확인하고 싶어",
+          "expected_documents": [
+            "response-latency-runbook.md"
+          ],
+          "retrieved_documents": [
+            "embedding-model-mismatch.md",
+            "response-latency-runbook.md",
+            "pgvector-slow-query.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "reciprocal_rank": 0.5,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-11",
+          "category": "direct",
+          "question": "pool timeout과 too many connections 오류가 간헐적으로 발생해",
+          "expected_documents": [
+            "database-pool-exhaustion.md"
+          ],
+          "retrieved_documents": [
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "response-latency-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "pgvector-slow-query.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-12",
+          "category": "direct",
+          "question": "근거가 없는 장애 질문을 받으면 어떤 정보를 추가로 요청해야 해?",
+          "expected_documents": [
+            "insufficient-evidence-policy.md"
+          ],
+          "retrieved_documents": [
+            "insufficient-evidence-policy.md",
+            "stale-document-filter.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "retrieval-chunking-quality.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "dev-13",
+          "category": "out_of_domain",
+          "question": "사무실 프린터에 종이가 걸렸을 때 토너를 어떻게 교체해?",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "token-cost-spike-postmortem.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "retrieval-chunking-quality.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "dev-14",
+          "category": "out_of_domain",
+          "question": "직원 연차 휴가 승인 규정과 경조사 휴가 일수를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "insufficient-evidence-policy.md",
+            "token-cost-spike-postmortem.md",
+            "api-429-rate-limit-runbook.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "stale-document-filter.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-01",
+          "category": "paraphrase",
+          "question": "요청이 몰릴 때 외부 모델이 호출을 거부해. 바로 다시 보내도 계속 실패해",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md"
+          ],
+          "retrieved_documents": [
+            "database-pool-exhaustion.md",
+            "api-auth-401-runbook.md",
+            "api-429-rate-limit-runbook.md",
+            "duplicate-indexing-runbook.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-02",
+          "category": "paraphrase",
+          "question": "파일을 올린 뒤 오랫동안 처리 중이라고만 나오고 질문에 내용이 반영되지 않아",
+          "expected_documents": [
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "duplicate-indexing-runbook.md",
+            "retrieval-chunking-quality.md",
+            "ingestion-worker-stuck-postmortem.md",
+            "insufficient-evidence-policy.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 0.3333333333333333,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        },
+        {
+          "case_id": "challenge-03",
+          "category": "hard_negative",
+          "question": "API 제공자의 주식 배당 기준일을 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "api-429-rate-limit-runbook.md",
+            "response-latency-runbook.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-04",
+          "category": "hard_negative",
+          "question": "OpenAI API 429 오류 당시 고객사별 실제 피해 금액과 보상 승인자를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md",
+            "database-pool-exhaustion.md",
+            "insufficient-evidence-policy.md",
+            "ingestion-worker-stuck-postmortem.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-05",
+          "category": "hard_negative",
+          "question": "pgvector 관리자의 생일과 개인 전화번호를 알려줘",
+          "expected_documents": [],
+          "retrieved_documents": [
+            "pgvector-slow-query.md",
+            "embedding-model-mismatch.md",
+            "stale-document-filter.md",
+            "api-429-rate-limit-runbook.md",
+            "api-auth-401-runbook.md"
+          ],
+          "reciprocal_rank": 0.0,
+          "hit_at_k": false,
+          "recall_at_k": 0.0,
+          "expected_answerable": false,
+          "predicted_answerable": true,
+          "passed_refusal": false
+        },
+        {
+          "case_id": "challenge-06",
+          "category": "multi_document",
+          "question": "API 429 오류가 늘고 입력 토큰 비용도 두 배가 됐어. 재시도와 비용을 각각 어떻게 점검해?",
+          "expected_documents": [
+            "api-429-rate-limit-runbook.md",
+            "token-cost-spike-postmortem.md"
+          ],
+          "retrieved_documents": [
+            "api-429-rate-limit-runbook.md",
+            "token-cost-spike-postmortem.md",
+            "database-pool-exhaustion.md",
+            "api-auth-401-runbook.md",
+            "response-latency-runbook.md"
+          ],
+          "reciprocal_rank": 1.0,
+          "hit_at_k": true,
+          "recall_at_k": 1.0,
+          "expected_answerable": true,
+          "predicted_answerable": true,
+          "passed_refusal": true
+        }
+      ]
+    }
+  ],
+  "provider": "gemini",
+  "embedding_fingerprint": "gemini:gemini-embedding-001:1536",
+  "dataset_sha256": "1a6fde6907eca149be036a775aa87d9c18571bc391df396398b592c890bb5a69",
+  "corpus_sha256": "b36c1065eb5c1e3d97ef59609f16d9e23dd7429a9af34ef9bbbed74d42ff16ee",
+  "document_count": 12,
+  "candidate_k": 20,
+  "chunk_size": 900,
+  "chunk_overlap": 120,
+  "grounding_policy": {
+    "local_vector_min": 0.08,
+    "semantic_vector_min": 0.35,
+    "keyword_coverage_min": 0.2,
+    "keyword_matches_min": 2,
+    "version": "coverage-v1",
+    "scope": "retrieval-gate-only; generated answer correctness is not evaluated"
+  },
+  "evaluated_at": "2026-09-03T16:19:07.557224Z",
+  "query_embedding_reuse": true,
+  "query_embedding_inputs": 20,
+  "query_embedding_input_characters": 750,
+  "query_embedding_preparation_ms": 1430,
+  "retrieval_timing_scope": "database-and-ranking-only",
+  "api_usage": {
+    "observed_requests": [
+      {
+        "model": "gemini-embedding-001",
+        "method": "batchEmbedContents",
+        "inputs": 20,
+        "input_characters": 750
+      }
+    ],
+    "embedding_http_requests": 1,
+    "generation_requests": 0,
+    "generation_output_tokens": 0,
+    "embedding_input_tokens": null,
+    "embedding_input_tokens_note": "Embedding token usage was not captured by this run. Input characters are measured, not tokens; no extra API call was made to count tokens.",
+    "document_reindexing": false,
+    "request_budget": {
+      "max_embedding_http_requests": 1,
+      "max_embedding_inputs": 20,
+      "max_input_characters": 750
+    }
+  }
+}

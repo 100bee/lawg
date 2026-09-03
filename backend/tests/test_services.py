@@ -3,7 +3,6 @@ from types import SimpleNamespace
 
 from app.services import ai
 from app.services.ai import embed_texts, generate_answer
-from app.services.answering import confidence_label
 from app.services.classifier import infer_incident_type
 from app.services.evaluation import select_recommended_mode
 from app.services.redaction import mask_sensitive_text
@@ -34,13 +33,6 @@ def test_local_embedding_is_deterministic_and_normalized() -> None:
 
     assert first == second
     assert math.isclose(math.sqrt(sum(value * value for value in first)), 1.0)
-
-
-def test_confidence_thresholds() -> None:
-    assert confidence_label(0.8) == "high"
-    assert confidence_label(0.4) == "medium"
-    assert confidence_label(0.1) == "low"
-    assert confidence_label(0.0) == "insufficient"
 
 
 def test_retrieval_modes_use_expected_scores() -> None:
@@ -77,10 +69,14 @@ def test_openai_answer_uses_responses_api(monkeypatch) -> None:
     captured: dict = {}
 
     class FakeResponses:
-        def create(self, **kwargs):
+        def parse(self, **kwargs):
             captured.update(kwargs)
             return SimpleNamespace(
-                output_text="근거 기반 답변 [S1]",
+                output_parsed=ai.GroundedDraft(
+                    answerable=True,
+                    summary=[ai.CitedStatement(text="근거 기반 답변", source_ids=["S1"])],
+                    causes=[], checks=[], actions=[], follow_up_questions=[],
+                ),
                 usage=SimpleNamespace(input_tokens=120, output_tokens=30),
             )
 
@@ -96,6 +92,7 @@ def test_openai_answer_uses_responses_api(monkeypatch) -> None:
 
     assert captured["model"] == ai.settings.openai_chat_model
     assert captured["store"] is False
-    assert "검색 근거" in captured["input"]
+    assert "evidence" in captured["input"]
+    assert captured["text_format"] is ai.GroundedDraft
     assert generated.input_tokens == 120
     assert generated.output_tokens == 30

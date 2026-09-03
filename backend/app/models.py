@@ -71,7 +71,7 @@ class RetrievalTrace(Base):
     prompt_version: Mapped[str] = mapped_column(String(50), nullable=False)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    diagnostics: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     retrieval_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     generation_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
-

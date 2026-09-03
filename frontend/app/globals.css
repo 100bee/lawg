@@ -202,3 +202,12 @@ button:disabled { opacity: .5; cursor: not-allowed; transform: none !important; 
   .heroVisual { display: none; }
   .quickQuestions, .debugColumn { grid-template-columns: 1fr; }
 }
+
+.retrievalSelect { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.retrievalSelect select { color: var(--text); background: var(--bg); border: 1px solid var(--line); padding: 7px; border-radius: 4px; }
+.providerNotice { color: var(--cyan) !important; font-size: 12px !important; }
+.traceDetails dd { overflow-wrap: anywhere; }
+.scoreBreakdown { flex-wrap: wrap; }
+@media (max-width: 760px) { .formFooter { flex-wrap: wrap; gap: 12px; } }
+.retrievalCandidates { padding: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.65; }
+.retrievalCandidates summary { cursor: pointer; color: var(--text); }

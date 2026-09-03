@@ -26,6 +26,7 @@ type Citation = {
   score: number;
   vector_score: number;
   keyword_score: number;
+  keyword_coverage: number;
 };
 
 type ChatResult = {
@@ -33,6 +34,7 @@ type ChatResult = {
   grounded: boolean;
   confidence: string;
   citations: Citation[];
+  retrieved_chunks: Citation[];
   trace_id: string;
   diagnostics: {
     masked_question: string;
@@ -46,6 +48,9 @@ type ChatResult = {
     model: string;
     prompt_version: string;
     top_score: number;
+    retrieval_mode: RetrievalMode;
+    evidence_reason: string;
+    candidate_count: number;
   };
 };
 
@@ -58,6 +63,8 @@ type EvaluationResult = {
   mrr: number;
   refusal_accuracy: number;
   average_retrieval_ms: number;
+  false_acceptance_rate: number | null;
+  false_refusal_rate: number | null;
 };
 
 type RetrievalComparison = {
@@ -70,6 +77,7 @@ type RetrievalComparison = {
   recommended_mode: RetrievalMode;
   recommendation_policy: string;
   results: EvaluationResult[];
+  provider: string;
 };
 
 const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
@@ -111,6 +119,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
+  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>("hybrid");
+  const [provider, setProvider] = useState("확인 중");
   const [error, setError] = useState<string | null>(null);
 
   const loadDocuments = useCallback(async () => {
@@ -124,6 +134,9 @@ export default function Home() {
 
   useEffect(() => {
     void loadDocuments();
+    void requestApi<{ provider: string }>("/api/health")
+      .then((health) => setProvider(health.provider))
+      .catch(() => setProvider("연결 안 됨"));
   }, [loadDocuments]);
 
   const serviceCount = useMemo(
@@ -135,8 +148,9 @@ export default function Home() {
     setSeeding(true);
     setError(null);
     try {
-      await requestApi("/api/documents/seed", { method: "POST" });
+      const result = await requestApi<{ failed: number }>("/api/documents/seed", { method: "POST" });
       await loadDocuments();
+      if (result.failed) throw new Error(`${result.failed}개 문서 색인에 실패했습니다. API 키와 요청 한도를 확인해 주세요.`);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "색인에 실패했습니다.");
     } finally {
@@ -170,7 +184,7 @@ export default function Home() {
       const result = await requestApi<ChatResult>("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question.trim() }),
+        body: JSON.stringify({ question: question.trim(), retrieval_mode: retrievalMode }),
       });
       setChatResult(result);
     } catch (caughtError) {
@@ -184,13 +198,23 @@ export default function Home() {
     setEvaluating(true);
     setError(null);
     try {
-      const result = await requestApi<RetrievalComparison>("/api/evaluations/compare", { method: "POST" });
+      const result = await requestApi<RetrievalComparison>("/api/evaluations/compare?repetitions=1", { method: "POST" });
       setComparison(result);
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "평가 실행에 실패했습니다.");
     } finally {
       setEvaluating(false);
     }
+  }
+
+  function downloadComparison() {
+    if (!comparison) return;
+    const url = URL.createObjectURL(new Blob([JSON.stringify(comparison, null, 2)], { type: "application/json" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `retrieval-${comparison.provider}.json`;
+    anchor.click();
+    URL.revokeObjectURL(url);
   }
 
   return (
@@ -244,7 +268,7 @@ export default function Home() {
 
         <div className="sidebarFooter">
           <span>provider</span>
-          <strong>{chatResult?.diagnostics.provider ?? "local / openai"}</strong>
+          <strong>{chatResult?.diagnostics.provider ?? provider}</strong>
         </div>
       </aside>
 
@@ -265,7 +289,8 @@ export default function Home() {
               <div>
                 <span className="heroBadge">EVIDENCE-FIRST RAG</span>
                 <h2>증상과 로그를 입력하면<br />근거 있는 대응 절차를 찾습니다.</h2>
-                <p>운영 문서에 없는 내용은 추측하지 않고 추가로 필요한 정보를 안내합니다.</p>
+                <p>관련 문서와 확인할 절차를 찾고, 근거가 부족하면 추가 정보를 요청합니다.</p>
+                {provider === "local" && <p className="providerNotice">현재는 API 키 없는 문서 발췌 모드입니다.</p>}
               </div>
               <div className="heroVisual">
                 <span>01</span><i />
@@ -292,8 +317,14 @@ export default function Home() {
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
                 placeholder="예: 배포 후 문서 색인은 완료됐지만 검색 결과에 나오지 않습니다..."
+                maxLength={8000}
               />
               <div className="formFooter">
+                <label className="retrievalSelect">검색 방식
+                  <select aria-label="검색 방식" value={retrievalMode} onChange={(event) => setRetrievalMode(event.target.value as RetrievalMode)}>
+                    {Object.entries(RETRIEVAL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
                 <span>{question.length} / 8000</span>
                 <button className="primaryButton" disabled={loading || !question.trim()}>
                   {loading ? "근거 검색 중..." : "장애 분석"}
@@ -306,7 +337,7 @@ export default function Home() {
             {loading && (
               <div className="loadingCard">
                 <div className="loadingPulse" />
-                <div><strong>운영 지식 검색 중</strong><span>벡터 검색과 키워드 검색을 결합하고 있습니다.</span></div>
+                <div><strong>운영 지식 검색 중</strong><span>{RETRIEVAL_LABELS[retrievalMode]}로 관련 문서를 찾고 있습니다.</span></div>
               </div>
             )}
 
@@ -315,9 +346,9 @@ export default function Home() {
                 <div className="answerHeader">
                   <div>
                     <span className={`groundingBadge ${chatResult.grounded ? "grounded" : "ungrounded"}`}>
-                      {chatResult.grounded ? "근거 확인됨" : "근거 부족"}
+                      {chatResult.grounded ? "출처 포함 답변" : "근거 부족"}
                     </span>
-                    <span className="confidence">confidence · {chatResult.confidence}</span>
+                    <span className="confidence">{RETRIEVAL_LABELS[chatResult.diagnostics.retrieval_mode]}</span>
                   </div>
                   <span className="traceId">trace {chatResult.trace_id.slice(0, 8)}</span>
                 </div>
@@ -347,6 +378,8 @@ export default function Home() {
                     <div><dt>Provider</dt><dd>{chatResult.diagnostics.provider}</dd></div>
                     <div><dt>Model</dt><dd>{chatResult.diagnostics.model}</dd></div>
                     <div><dt>Prompt</dt><dd>{chatResult.diagnostics.prompt_version}</dd></div>
+                    <div><dt>Evidence</dt><dd>{chatResult.diagnostics.evidence_reason}</dd></div>
+                    <div><dt>검색 후보</dt><dd>{chatResult.diagnostics.candidate_count}개</dd></div>
                   </dl>
                 </>
               ) : (
@@ -374,12 +407,20 @@ export default function Home() {
                     <div className="scoreBreakdown">
                       <span>vector {citation.vector_score.toFixed(3)}</span>
                       <span>keyword {citation.keyword_score.toFixed(3)}</span>
+                      <span>coverage {(citation.keyword_coverage * 100).toFixed(0)}%</span>
                     </div>
                     <p>{citation.content}</p>
                   </details>
                 ))}
                 {!chatResult && <p className="emptySources">답변에 사용된 청크가 여기에 표시됩니다.</p>}
               </div>
+              {chatResult && <details className="retrievalCandidates">
+                <summary>전체 검색 후보 {chatResult.retrieved_chunks.length}개 보기</summary>
+                {chatResult.retrieved_chunks.map((chunk, index) => <p key={`${chunk.document_id}-${chunk.chunk_index}`}>
+                  {index + 1}. {chunk.title}<br />
+                  점수 {chunk.score.toFixed(3)} · 단어 일치 {(chunk.keyword_coverage * 100).toFixed(0)}%
+                </p>)}
+              </details>}
             </section>
 
             {comparison && (
@@ -407,9 +448,11 @@ export default function Home() {
                     );
                   })}
                 </div>
+                <p className="recommendationNote">검색과 답변 허용 판정의 비교입니다. 생성 답변의 사실 정확도는 별도로 확인해야 합니다.</p>
                 <p className="recommendationNote">
                   선택 기준 · {comparison.recommendation_policy}
                 </p>
+                <button className="secondaryButton fullWidth" onClick={downloadComparison}>실험 결과 JSON 저장</button>
               </section>
             )}
           </aside>

@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ragops
       POSTGRES_PASSWORD: ragops
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     volumes:
       - ragops_postgres:/var/lib/postgresql/data
     healthcheck:
@@ -17,30 +17,35 @@ services:
 
   backend:
     build: ./backend
-    env_file: .env
+    env_file: ${RAGOPS_ENV_FILE:-.env}
     environment:
       DATABASE_URL: postgresql+psycopg://ragops:ragops@db:5432/ragops
-      FRONTEND_ORIGIN: http://localhost:3000
+      FRONTEND_ORIGIN: http://localhost:${FRONTEND_PORT:-3000}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
     volumes:
       - ./backend/data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 15
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8000
+        NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8000
+      NEXT_PUBLIC_API_URL: http://localhost:${BACKEND_PORT:-8000}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   ragops_postgres:
-

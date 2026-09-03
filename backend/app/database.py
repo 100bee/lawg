@@ -20,6 +20,12 @@ def init_database() -> None:
     with engine.begin() as connection:
         connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=engine)
+    # Compatible with databases created by the initial MVP; no rows are removed.
+    with engine.begin() as connection:
+        connection.execute(text(
+            "ALTER TABLE retrieval_traces ADD COLUMN IF NOT EXISTS "
+            "diagnostics JSONB NOT NULL DEFAULT '{}'::jsonb"
+        ))
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -28,4 +34,3 @@ def get_db() -> Generator[Session, None, None]:
         yield database
     finally:
         database.close()
-

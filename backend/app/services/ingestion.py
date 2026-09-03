@@ -6,15 +6,20 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.models import Document, DocumentChunk
-from app.services.ai import embed_texts
+from app.services.ai import embed_texts, embedding_fingerprint
 from app.services.chunking import split_document
+from app.services.redaction import REDACTION_VERSION, mask_sensitive_text
 
 
 def _parse_frontmatter(raw_text: str) -> tuple[dict[str, str], str]:
+    raw_text = raw_text.replace("\r\n", "\n")
     if not raw_text.startswith("---\n"):
         return {}, raw_text
 
-    _, frontmatter, body = raw_text.split("---", 2)
+    parts = raw_text.split("---", 2)
+    if len(parts) != 3:
+        raise ValueError("문서 메타데이터의 닫는 --- 구분자가 없습니다.")
+    _, frontmatter, body = parts
     metadata: dict[str, str] = {}
     for line in frontmatter.strip().splitlines():
         if ":" not in line:
@@ -33,32 +38,45 @@ def ingest_markdown_text(
     source_name: str,
     raw_text: str,
 ) -> tuple[Document, bool]:
+    raw_text = mask_sensitive_text(raw_text)
+    source_name = mask_sensitive_text(Path(source_name.replace("\\", "/")).name)
     metadata, body = _parse_frontmatter(raw_text)
+    if not body.strip():
+        raise ValueError("색인할 문서 본문이 없습니다.")
+    if len(source_name) > 255 or len(metadata.get("title", "")) > 255:
+        raise ValueError("파일 이름과 문서 제목은 255자 이하여야 합니다.")
     checksum = _checksum(raw_text)
 
-    existing = database.scalar(select(Document).where(Document.source_name == source_name))
-    if existing and existing.checksum == checksum:
+    duplicate = database.scalar(select(Document).where(Document.checksum == checksum))
+    existing = duplicate or database.scalar(select(Document).where(Document.source_name == source_name))
+    if existing and existing.checksum == checksum and existing.chunks and all(
+        chunk.attributes.get("embedding_fingerprint") == embedding_fingerprint()
+        and chunk.attributes.get("redaction_version") == REDACTION_VERSION
+        for chunk in existing.chunks
+    ):
         return existing, False
-    if existing:
-        database.delete(existing)
-        database.flush()
 
-    document = Document(
-        title=metadata.get("title", Path(source_name).stem),
-        source_name=source_name,
-        document_type=metadata.get("document_type", "runbook"),
-        service=metadata.get("service", "unknown"),
-        incident_type=metadata.get("incident_type", "UNKNOWN"),
-        severity=metadata.get("severity", "P3"),
-        version=metadata.get("version", "all"),
-        checksum=checksum,
-        status="processing",
-    )
+    index_metadata = {**metadata, "embedding_fingerprint": embedding_fingerprint(), "redaction_version": REDACTION_VERSION}
+    chunks = split_document(body, metadata)
+    if not chunks:
+        raise ValueError("색인할 수 있는 문서 내용이 없습니다.")
+    embeddings = embed_texts([chunk.content for chunk in chunks])
+    document = existing or Document()
+    if existing:
+        document.chunks.clear()
+        database.flush()
+    document.title = metadata.get("title", Path(source_name).stem)
+    document.source_name = existing.source_name if duplicate else source_name
+    document.document_type = metadata.get("document_type", "runbook")
+    document.service = metadata.get("service", "unknown")
+    document.incident_type = metadata.get("incident_type", "UNKNOWN")
+    document.severity = metadata.get("severity", "P3")
+    document.version = metadata.get("version", "all")
+    document.checksum = checksum
+    document.status = "processing"
     database.add(document)
     database.flush()
 
-    chunks = split_document(body, metadata)
-    embeddings = embed_texts([chunk.content for chunk in chunks])
     for chunk, embedding in zip(chunks, embeddings, strict=True):
         database.add(
             DocumentChunk(
@@ -67,7 +85,7 @@ def ingest_markdown_text(
                 heading=chunk.heading,
                 content=chunk.content,
                 token_count=chunk.token_count,
-                attributes=metadata,
+                attributes=index_metadata,
                 embedding=embedding,
             )
         )

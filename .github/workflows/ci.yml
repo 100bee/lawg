@@ -1,0 +1,22 @@
+name: Validate RAG MVP
+on: [push, pull_request]
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    env:
+      RAGOPS_ENV_FILE: .env.example
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start key-free services
+        run: docker compose -f docker-compose.yml -f compose.local.yaml up --build -d --wait
+      - name: Unit and PostgreSQL integration tests
+        run: docker compose -f docker-compose.yml -f compose.local.yaml run --rm -e TEST_DATABASE_URL=postgresql+psycopg://ragops:ragops@db:5432/ragops backend python -m pytest -q
+      - name: Record retrieval experiment
+        run: docker compose -f docker-compose.yml -f compose.local.yaml exec -T backend python -m app.evaluate --seed --repetitions 1 > retrieval-ci.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: retrieval-results
+          path: retrieval-ci.json
+      - name: Stop services
+        if: always()
+        run: docker compose -f docker-compose.yml -f compose.local.yaml down -v

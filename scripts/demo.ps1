@@ -19,8 +19,9 @@ Write-Host "API status: $($health.status) / provider: $($health.provider)"
 
 $seed = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/documents/seed"
 Write-Host "Documents: $($seed.documents.Count), indexed: $($seed.indexed), skipped: $($seed.skipped)"
+if ($seed.failed -gt 0) { throw "Indexing failed. Check provider settings and quota before evaluating." }
 
-$comparison = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/evaluations/compare"
+$comparison = Invoke-RestMethod -Method Post -Uri "http://localhost:8000/api/evaluations/compare?repetitions=1"
 foreach ($result in $comparison.results) {
     Write-Host "[$($result.retrieval_mode)] Recall@5: $([math]::Round($result.recall_at_k * 100, 1))%, MRR: $([math]::Round($result.mrr, 3)), Refusal: $([math]::Round($result.refusal_accuracy * 100, 1))%, Latency: $([math]::Round($result.average_retrieval_ms, 1))ms"
 }

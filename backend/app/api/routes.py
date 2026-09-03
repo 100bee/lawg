@@ -1,7 +1,9 @@
 import uuid
 from time import perf_counter
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
@@ -23,7 +25,7 @@ from app.services.answering import answer_with_evidence
 from app.services.classifier import infer_incident_type
 from app.services.evaluation import run_evaluation, run_retrieval_comparison
 from app.services.ingestion import ingest_markdown_text, ingest_sample_documents
-from app.services.redaction import mask_sensitive_text
+from app.services.redaction import mask_sensitive_data, mask_sensitive_text
 from app.services.retrieval import retrieve_chunks
 
 
@@ -37,8 +39,11 @@ def health(database: Session = Depends(get_db)) -> HealthResponse:
 
 
 @router.get("/documents", response_model=list[DocumentResponse])
-def list_documents(database: Session = Depends(get_db)) -> list[Document]:
-    return list(database.scalars(select(Document).order_by(Document.created_at.desc())).all())
+def list_documents(database: Session = Depends(get_db)) -> list[DocumentResponse]:
+    documents = database.scalars(select(Document).order_by(Document.created_at.desc())).all()
+    return [DocumentResponse.model_validate(mask_sensitive_data(
+        DocumentResponse.model_validate(document).model_dump()
+    )) for document in documents]
 
 
 @router.post("/documents/seed", response_model=SeedResponse)
@@ -59,7 +64,7 @@ async def upload_document(
 ) -> DocumentResponse:
     if not file.filename or not file.filename.lower().endswith((".md", ".txt")):
         raise HTTPException(status_code=400, detail="Markdown 또는 TXT 파일만 업로드할 수 있습니다.")
-    raw_bytes = await file.read()
+    raw_bytes = await file.read(2_000_001)
     if len(raw_bytes) > 2_000_000:
         raise HTTPException(status_code=400, detail="파일 크기는 2MB 이하여야 합니다.")
     try:
@@ -68,7 +73,10 @@ async def upload_document(
         raise HTTPException(status_code=400, detail="UTF-8 문서만 지원합니다.") from error
 
     try:
-        document, _ = ingest_markdown_text(database, file.filename, raw_text)
+        document, _ = await run_in_threadpool(ingest_markdown_text, database, file.filename, raw_text)
+    except ValueError as error:
+        database.rollback()
+        raise HTTPException(status_code=400, detail=str(error)) from error
     except RuntimeError as error:
         database.rollback()
         raise HTTPException(status_code=503, detail=str(error)) from error
@@ -88,15 +96,20 @@ def chat(request: ChatRequest, database: Session = Depends(get_db)) -> ChatRespo
             service=request.service,
             incident_type=request.incident_type,
             top_k=request.top_k,
+            mode=request.retrieval_mode,
         )
-        generated, grounded, confidence, generation_ms = answer_with_evidence(
+        result = answer_with_evidence(
             masked_question,
             retrieval.chunks,
+            mode=request.retrieval_mode,
         )
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     except RuntimeError as error:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
-    citations = [
+    generated = result.generated
+    retrieved_chunks = [
         Citation(
             document_id=chunk.document_id,
             title=chunk.title,
@@ -107,25 +120,33 @@ def chat(request: ChatRequest, database: Session = Depends(get_db)) -> ChatRespo
             score=chunk.score,
             vector_score=chunk.vector_score,
             keyword_score=chunk.keyword_score,
+            keyword_coverage=chunk.keyword_coverage,
+            keyword_matches=chunk.keyword_matches,
         )
         for chunk in retrieval.chunks
     ]
+    used_chunks = {(chunk.document_id, chunk.chunk_index) for chunk in result.citations}
+    citations = [citation for citation in retrieved_chunks
+                 if (citation.document_id, citation.chunk_index) in used_chunks]
     top_score = retrieval.chunks[0].score if retrieval.chunks else 0.0
     trace = RetrievalTrace(
-        question=request.question,
+        question=masked_question,
         masked_question=masked_question,
         inferred_incident_type=inferred_incident_type,
-        retrieved_chunks=[citation.model_dump(mode="json") for citation in citations],
+        retrieved_chunks=[citation.model_dump(mode="json") for citation in retrieved_chunks],
         answer=generated.text,
-        grounded=grounded,
+        grounded=result.grounded,
         top_score=top_score,
         provider=settings.ai_provider,
-        model=settings.openai_chat_model if settings.ai_provider == "openai" else "local-template",
+        model=settings.chat_model,
         prompt_version=settings.prompt_version,
         input_tokens=generated.input_tokens,
         output_tokens=generated.output_tokens,
+        diagnostics={"retrieval_mode": request.retrieval_mode, "evidence_reason": generated.reason,
+                     "candidate_count": len(retrieval.chunks),
+                     "citations": [citation.model_dump(mode="json") for citation in citations]},
         retrieval_ms=retrieval.elapsed_ms,
-        generation_ms=generation_ms,
+        generation_ms=result.elapsed_ms,
     )
     database.add(trace)
     database.commit()
@@ -134,15 +155,16 @@ def chat(request: ChatRequest, database: Session = Depends(get_db)) -> ChatRespo
     total_ms = round((perf_counter() - total_started_at) * 1000)
     return ChatResponse(
         answer=generated.text,
-        grounded=grounded,
-        confidence=confidence,
+        grounded=result.grounded,
+        confidence=result.confidence,
         citations=citations,
+        retrieved_chunks=retrieved_chunks,
         trace_id=trace.id,
         diagnostics=Diagnostics(
             masked_question=masked_question,
             inferred_incident_type=inferred_incident_type,
             retrieval_ms=retrieval.elapsed_ms,
-            generation_ms=generation_ms,
+            generation_ms=result.elapsed_ms,
             total_ms=total_ms,
             input_tokens=generated.input_tokens,
             output_tokens=generated.output_tokens,
@@ -150,6 +172,9 @@ def chat(request: ChatRequest, database: Session = Depends(get_db)) -> ChatRespo
             model=trace.model,
             prompt_version=settings.prompt_version,
             top_score=top_score,
+            retrieval_mode=request.retrieval_mode,
+            evidence_reason=generated.reason,
+            candidate_count=len(retrieval.chunks),
         ),
     )
 
@@ -159,7 +184,7 @@ def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
     trace = database.get(RetrievalTrace, trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail="실행 기록을 찾을 수 없습니다.")
-    return {
+    return mask_sensitive_data({
         "id": trace.id,
         "question": trace.question,
         "masked_question": trace.masked_question,
@@ -174,8 +199,9 @@ def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
         "output_tokens": trace.output_tokens,
         "retrieval_ms": trace.retrieval_ms,
         "generation_ms": trace.generation_ms,
+        "diagnostics": trace.diagnostics,
         "created_at": trace.created_at,
-    }
+    })
 
 
 @router.post("/evaluations/run", response_model=EvaluationResponse)
@@ -183,15 +209,26 @@ def evaluate(database: Session = Depends(get_db)) -> EvaluationResponse:
     document_count = database.scalar(select(func.count()).select_from(Document))
     if not document_count:
         raise HTTPException(status_code=409, detail="먼저 샘플 문서를 색인해 주세요.")
-    return run_evaluation(database)
+    try:
+        return run_evaluation(database)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @router.post("/evaluations/compare", response_model=RetrievalComparisonResponse)
 def compare_retrieval(
     repetitions: int = Query(default=3, ge=1, le=10),
+    split: Literal["all", "dev", "challenge"] = "all",
     database: Session = Depends(get_db),
 ) -> RetrievalComparisonResponse:
     document_count = database.scalar(select(func.count()).select_from(Document))
     if not document_count:
         raise HTTPException(status_code=409, detail="먼저 샘플 문서를 색인해 주세요.")
-    return run_retrieval_comparison(database, repetitions=repetitions)
+    try:
+        return run_retrieval_comparison(database, repetitions=repetitions, split=split)
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
