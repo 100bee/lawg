@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     hybrid_keyword_weight: float = 0.28
     minimum_grounding_score: float = 0.08
     minimum_semantic_score: float = Field(default=0.35, ge=0, le=1)
+    # Gemini cosine scores sit near 0.54 even for off-domain questions, so 0.35 accepts everything.
+    # 0.62 = midpoint of the dev-split gap (refusals <= 0.548, answerable >= 0.693); challenge is held out.
+    gemini_minimum_semantic_score: float = Field(default=0.62, ge=0, le=1)
     minimum_keyword_coverage: float = Field(default=0.20, ge=0, le=1)
     minimum_keyword_matches: int = Field(default=2, ge=1)
     openai_timeout_seconds: float = Field(default=45, gt=0)

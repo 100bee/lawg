@@ -199,9 +199,10 @@ def run_retrieval_comparison(
         grounding_policy={
             "local_vector_min": settings.minimum_grounding_score,
             "semantic_vector_min": settings.minimum_semantic_score,
+            "gemini_semantic_vector_min": settings.gemini_minimum_semantic_score,
             "keyword_coverage_min": settings.minimum_keyword_coverage,
             "keyword_matches_min": settings.minimum_keyword_matches,
-            "version": "coverage-v1",
+            "version": "coverage-v2-gemini-calibrated",
             "scope": "retrieval-gate-only; generated answer correctness is not evaluated",
         },
         evaluated_at=datetime.now(timezone.utc),

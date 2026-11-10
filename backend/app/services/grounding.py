@@ -18,7 +18,9 @@ def evidence_chunks(chunks: list[RetrievedChunk], mode: RetrievalMode) -> list[R
             # Hashing measures token overlap, not semantic entailment.
             vector = lexical and chunk.vector_score >= settings.minimum_grounding_score
         else:
-            vector = chunk.vector_score >= settings.minimum_semantic_score
+            minimum = (settings.gemini_minimum_semantic_score if settings.ai_provider == "gemini"
+                       else settings.minimum_semantic_score)
+            vector = chunk.vector_score >= minimum
         sufficient = vector if mode == "vector" else lexical if mode == "keyword" else lexical or vector
         if sufficient:
             accepted.append(chunk)

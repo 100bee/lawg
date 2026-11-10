@@ -27,6 +27,13 @@ def test_one_matching_word_is_not_sufficient_even_with_high_rank(monkeypatch, mo
     assert evidence_chunks([chunk(score=1, vector_score=0.9)], mode) == []
 
 
+@pytest.mark.parametrize("vector_score,accepted", [(0.55, False), (0.70, True)])
+def test_gemini_vector_gate_uses_calibrated_threshold(monkeypatch, vector_score, accepted):
+    # Off-domain Gemini questions still score about 0.54; answerable ones score 0.69 or higher.
+    monkeypatch.setattr(settings, "ai_provider", "gemini")
+    assert bool(evidence_chunks([chunk(vector_score=vector_score)], "vector")) is accepted
+
+
 def test_retrieval_refusal_does_not_call_model(monkeypatch):
     def forbidden(*args):
         pytest.fail("No model call is needed without evidence")
