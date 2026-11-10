@@ -1,6 +1,8 @@
-# RAGOps Copilot
+# Lawg
 
-[![Validate RAG MVP](https://github.com/100bee/rag-ops-copilot/actions/workflows/ci.yml/badge.svg)](https://github.com/100bee/rag-ops-copilot/actions/workflows/ci.yml)
+> 이전 이름은 RAGOps Copilot입니다. 지금 문서는 가상 장애 문서로 RAG 엔진을 검증한 v1을 설명하며, 게임·커뮤니티 이용자를 위한 온라인 사건 법령 안내로 전환하고 있습니다.
+
+[![Validate RAG MVP](https://github.com/100bee/lawg/actions/workflows/ci.yml/badge.svg)](https://github.com/100bee/lawg/actions/workflows/ci.yml)
 
 **운영 장애 문서를 검색하고, 출처가 있는 대응 절차를 제안하는 RAG 설계·평가 프로젝트.**
 
@@ -8,7 +10,7 @@ API 429, 문서 색인 정체, 검색 품질 저하, 응답 지연과 토큰 증
 
 [사용 모델 상세](docs/models.md) · [아키텍처](docs/architecture.md) · [Gemini 실험](docs/retrieval-experiment-v3-gemini-calibrated.md) · [구현 가이드](docs/implementation-guide.md)
 
-![운영 문서 12개가 등록된 RAGOps Copilot 대시보드](docs/images/dashboard.png)
+![운영 문서 12개가 등록된 Lawg 대시보드](docs/images/dashboard.png)
 
 *실제 실행 화면. 왼쪽에서 문서를 관리하고, 가운데에서 질문하며, 오른쪽에서 검색 근거와 실행 정보를 확인합니다. 이미지는 질문 실행 전 상태입니다.*
 
@@ -117,8 +119,8 @@ Gemini 실험은 질문 20개·750자를 **동기 임베딩 배치 1회**로 처
 Docker Desktop과 Google AI Studio API 키를 준비합니다. 무료 등급의 모델·프로젝트별 제한과 키 발급 방법은 [Gemini 설정 안내](docs/gemini-setup.md)에 설명되어 있습니다.
 
 ```bash
-git clone https://github.com/100bee/rag-ops-copilot.git
-cd rag-ops-copilot
+git clone https://github.com/100bee/lawg.git
+cd lawg
 test -f .env || cp .env.example .env
 ```
 

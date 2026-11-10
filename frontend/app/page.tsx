@@ -223,7 +223,7 @@ export default function Home() {
         <div className="brand">
           <div className="brandMark">R</div>
           <div>
-            <strong>RAGOps</strong>
+            <strong>Lawg</strong>
             <span>Incident Copilot</span>
           </div>
         </div>
