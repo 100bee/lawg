@@ -6,7 +6,7 @@
 
 API 429, 문서 색인 정체, 검색 품질 저하, 응답 지연과 토큰 증가를 다룹니다. FastAPI·pgvector로 검색 파이프라인을 구현하고, Next.js에서 답변 출처와 실행 과정을 확인합니다. 가상의 B2B AI 서비스 운영팀을 대상으로 한 MVP입니다.
 
-[사용 모델 상세](docs/models.md) · [아키텍처](docs/architecture.md) · [Gemini 실험](docs/retrieval-experiment-v2-gemini-budget.md) · [구현 가이드](docs/implementation-guide.md)
+[사용 모델 상세](docs/models.md) · [아키텍처](docs/architecture.md) · [Gemini 실험](docs/retrieval-experiment-v3-gemini-calibrated.md) · [구현 가이드](docs/implementation-guide.md)
 
 ![운영 문서 12개가 등록된 RAGOps Copilot 대시보드](docs/images/dashboard.png)
 
@@ -30,7 +30,7 @@ API 429, 문서 색인 정체, 검색 품질 저하, 응답 지연과 토큰 증
 | 답변 | 구조화된 한국어 대응 절차, 출처 ID 검증, 근거 부족·모델 거절 처리 |
 | 관측성 | 검색 후보·점수·단어 일치 비율, 검색/생성 지연, 모델·프롬프트, 토큰·Trace |
 | 실험 | Gemini 임베딩 20문항 × Vector·Keyword·Hybrid 방식별 1회 |
-| 검증 | 단위·PostgreSQL 통합 테스트 23개 통과, Next.js 프로덕션 빌드, 실제 Gemini 답변·거절 확인 |
+| 검증 | 단위·PostgreSQL 통합 테스트 25개 통과, Next.js 프로덕션 빌드, 실제 Gemini 답변·거절 확인 |
 
 실제 사용자가 있는 프로덕션 서비스의 성과나 장애 대응 시간 단축을 측정한 프로젝트는 아닙니다. [검증 기록](docs/validation-2026-09-04.md)과 [실험 원본](docs/retrieval-experiment-v2-gemini-budget.json)을 함께 공개합니다.
 
@@ -94,21 +94,23 @@ flowchart LR
 
 | 임베딩 | 방식 | Recall@5 | MRR | 검색 근거 판정 일치율 |
 | --- | --- | ---: | ---: | ---: |
-| **Gemini** | **Vector** | **100.0%** | **1.000** | **75.0%** |
-| Gemini | Keyword | 93.3% | 0.817 | 80.0% |
-| Gemini | Hybrid | 100.0% | 0.878 | 75.0% |
+| 임베딩 | 방식 | Recall@5 | MRR | 검색 근거 판정 일치율 | 거절 대상 거절 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| **Gemini** | **Vector** | **100.0%** | **1.000** | **90.0%** | **3/5** |
+| Gemini | Keyword | 93.3% | 0.817 | 80.0% | 4/5 |
+| Gemini | Hybrid | 100.0% | 0.878 | 90.0% | 3/5 |
 
-**이번 작은 데이터에서는 Gemini Vector의 검색 순위가 가장 좋았습니다.** 반면 Vector·Hybrid의 현재 검색 근거 판정은 거절 대상 5문항을 모두 잘못 허용했습니다. 75%라는 전체 일치율이 거절 성능이 좋다는 뜻은 아닙니다. Keyword도 답변 가능한 3문항을 잘못 거절했습니다.
+**이번 작은 데이터에서는 Gemini Vector의 검색 순위가 가장 좋았습니다.** v2에서는 Vector·Hybrid가 거절 대상 5문항을 모두 허용했습니다. Gemini 임베딩은 무관한 질문에도 유사도 약 0.54를 주기 때문에 기준 0.35가 의미가 없었습니다. dev 질문만으로 Gemini 기준을 0.62로 보정해 3/5를 거절했고, 답변 가능 질문의 잘못된 거절은 0건을 유지했습니다. 남은 2문항(문서에 없는 피해 금액, 관리자 개인정보)은 실제 호출에서 Gemini 답변 단계가 거절했습니다. Keyword는 답변 가능한 3문항을 잘못 거절했습니다.
 
 - **의미 검색의 효과:** “파일을 올린 뒤 오랫동안 처리 중…” 질문에서 Vector는 Worker 정체 문서를 1위로 찾았고, Keyword는 놓쳤습니다.
 - **Hybrid의 한계:** 같은 질문의 정답 문서는 Hybrid에서 3위였습니다. 현재 가중치의 키워드 결합이 의미 검색 순위를 낮추기도 했습니다.
-- **다음 개선점:** 검색 순위와 별개로 거절 기준을 보정하고, 새 검증 질문과 생성 답변의 수동 근거 대조로 확인해야 합니다.
+- **유사도의 한계:** 주제는 같지만 문서에 답이 없는 질문은 유사도로 구분되지 않습니다. 검색 단계가 아니라 답변 단계의 거절이 필요합니다.
 
 Gemini 실험은 질문 20개·750자를 **동기 임베딩 배치 1회**로 처리했습니다. 기존 색인을 사용했고 답변 생성 호출은 0회였습니다. 문자는 토큰과 다르며 정확한 임베딩 토큰 사용량은 해당 실행에서 수집하지 않았습니다.
 
 검색 방식별 1회 실행했으며 임베딩 준비 시간은 DB 검색시간과 분리했습니다. 작은 데이터의 검색 평가 결과로, 전체 생성 답변의 사실 정확도를 채점한 결과는 아닙니다.
 
-[Gemini 실험·실패 분석](docs/retrieval-experiment-v2-gemini-budget.md) · [Gemini 원본 JSON](docs/retrieval-experiment-v2-gemini-budget.json)
+[거절 기준 보정 실험](docs/retrieval-experiment-v3-gemini-calibrated.md) · [보정 원본 JSON](docs/retrieval-experiment-v3-gemini-calibrated.json) · [v2 실험·실패 분석](docs/retrieval-experiment-v2-gemini-budget.md)
 
 ## 실행하기
 
@@ -156,7 +158,7 @@ docker compose exec -T backend python -m app.evaluate --repetitions 1 --reuse-qu
 ## 현재 한계와 다음 단계
 
 - **데이터와 평가:** 가상 문서 12개·질문 20개의 작은 데이터입니다. 이미 살펴본 challenge 질문을 계속 독립 시험 세트로 주장하지 않고 새 질문을 추가해야 합니다.
-- **근거 판정:** 의미 유사도 기준 0.35에서 답이 없는 질문을 허용하는 실패가 있습니다. 출처 ID 검증만으로 문장의 사실 정확성을 보장하지 않습니다.
+- **근거 판정:** Gemini 기준 0.62는 dev 거절 대상 2문항으로 정해 경계 근거가 적습니다. 주제가 같은 질문은 검색 단계에서 거르지 못하고, 답변 단계 거절은 2건만 확인했습니다. 출처 ID 검증만으로 문장의 사실 정확성을 보장하지 않습니다.
 - **응답 속도:** 실제 정상 Gemini 답변 1건의 생성에 약 36초가 걸렸습니다. 스트리밍·컨텍스트 예산·구간별 지연을 추가 검토할 여지가 있습니다.
 - **서비스 범위:** 인증·조직별 문서 권한, 작업 큐, OCR, 외부 모니터링·자동 복구는 후속 범위입니다.
 - **운영 데이터 보호:** 마스킹은 정규식 기반이라 모든 민감정보를 탐지하지 않습니다. 과거 저장 데이터는 소급 삭제하지 않으며, 문서 재색인과 별도 보존 정책이 필요합니다.
