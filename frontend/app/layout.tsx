@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Lawg",
-  description: "Lawg v1 엔진 데모: 운영 장애 문서 RAG",
+  description: "Lawg: 게임·커뮤니티 온라인 사건 법령 안내 (개발 중)",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
