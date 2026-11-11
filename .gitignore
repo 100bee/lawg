@@ -16,3 +16,6 @@ Thumbs.db
 coverage/
 htmlcov/
 
+docs/pivot-plan.md
+docs/pivot-checklist.md
+docs/stage0/

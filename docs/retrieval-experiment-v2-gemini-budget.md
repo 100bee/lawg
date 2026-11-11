@@ -4,7 +4,7 @@
 
 ## 목적과 API 사용 범위
 
-[원본 프로젝트](https://github.com/100bee/rag-ops-copilot)의 Vector·Keyword·Hybrid 비교를 실제 의미 임베딩으로 수행했다. 질문 임베딩을 재사용하고 생성 모델 호출을 생략해 API 사용량을 줄였다.
+[원본 프로젝트](https://github.com/100bee/lawg)의 Vector·Keyword·Hybrid 비교를 실제 의미 임베딩으로 수행했다. 질문 임베딩을 재사용하고 생성 모델 호출을 생략해 API 사용량을 줄였다.
 
 | 항목 | 실제 사용량 |
 | --- | ---: |

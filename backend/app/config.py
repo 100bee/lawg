@@ -6,7 +6,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    app_name: str = "RAGOps Copilot API"
+    app_name: str = "Lawg API"
     app_version: str = "0.1.0"
     database_url: str = "postgresql+psycopg://ragops:ragops@localhost:5432/ragops"
     frontend_origin: str = "http://localhost:3000"
