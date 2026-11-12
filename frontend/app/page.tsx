@@ -29,6 +29,14 @@ const REFUSAL: Record<RefusalKind, { halt: string; title: string }> = {
   referral: { halt: "전문 기관의 도움이 먼저 필요해요", title: "전문 기관에 먼저 연락하세요" },
 };
 const GENERIC_ERROR = "정리하지 못했어요. 잠시 뒤 다시 시도해 주세요.";
+const TIMEOUT_MS = 90_000; // the server retries and may switch models when the free tier is busy
+// The API answers in one response, so these follow the pipeline order by elapsed time, not live signals.
+const STAGES: { after: number; text: string }[] = [
+  { after: 0, text: "사건을 읽고 있어요" },
+  { after: 1500, text: "관련 조문을 찾고 있어요" },
+  { after: 3000, text: "리포트를 쓰고 있어요" },
+  { after: 10000, text: "평소보다 오래 걸리고 있어요. AI 서버가 바쁘면 다시 시도하느라 20초쯤 걸릴 수 있어요." },
+];
 const ADVICE = "사건마다 사정이 달라서 변호사나 대한법률구조공단(132)의 상담이 필요합니다.";
 
 const anchor = (id: string) => `source-${id}`;
@@ -39,11 +47,21 @@ export default function Page() {
   const [result, setResult] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [elapsed, setElapsed] = useState(0);
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (result) resultRef.current?.focus();
   }, [result]);
+
+  useEffect(() => {
+    if (!loading) return;
+    const started = Date.now();
+    setElapsed(0);
+    const timer = setInterval(() => setElapsed(Date.now() - started), 500);
+    return () => clearInterval(timer);
+  }, [loading]);
+  const stage = STAGES.filter((item) => elapsed >= item.after).at(-1)?.text ?? "";
 
   async function request(text: string, role?: Role) {
     setLoading(true);
@@ -53,6 +71,7 @@ export default function Page() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ story: text, role: role ?? null }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
@@ -62,8 +81,9 @@ export default function Page() {
       }
       setResult((await response.json()) as ReportResponse);
       setSubmitted(text);
-    } catch {
-      setError(GENERIC_ERROR);
+    } catch (caught) {
+      const timedOut = caught instanceof DOMException && caught.name === "TimeoutError";
+      setError(timedOut ? "응답이 너무 오래 걸려서 멈췄어요. 잠시 뒤 다시 시도해 주세요." : GENERIC_ERROR);
     } finally {
       setLoading(false);
     }
@@ -105,7 +125,7 @@ export default function Page() {
               </button>
             </div>
           </form>
-          <p className="srOnly" role="status">{loading ? "정리하는 중이에요" : ""}</p>
+          <p className="status" role="status">{loading ? stage : ""}</p>
           {error && <p className="error" role="alert">{error}</p>}
         </section>
 
@@ -145,6 +165,7 @@ export default function Page() {
       <footer className="foot">
         <div className="wrap">
           <p>이 서비스는 공개된 법령 정보를 정리해 보여줍니다. 법률 상담이나 법적 판단을 대신하지 않습니다. 급한 위험이 있으면 112에 신고하세요.</p>
+          <p>적어 주신 내용은 개인정보를 가린 뒤 Google Gemini로 보내 처리합니다. 무료 등급이라 Google의 서비스 개선에 쓰일 수 있어요.</p>
         </div>
       </footer>
     </>

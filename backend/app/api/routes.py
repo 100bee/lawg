@@ -18,7 +18,7 @@ from app.schemas import (
     RetrievalComparisonResponse,
     SeedResponse,
 )
-from app.services.ai import ContentBlocked
+from app.services.ai import ContentBlocked, ProviderBusy
 from app.services.evaluation import run_evaluation, run_retrieval_comparison
 from app.services.ingestion import ingest_markdown_text, ingest_sample_documents
 from app.services.redaction import mask_sensitive_data
@@ -34,10 +34,12 @@ def report(request: ReportRequest, database: Session = Depends(get_db)) -> Repor
         return build_report(database, request.story, request.role)
     except ContentBlocked as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except ProviderBusy as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
     except ValueError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
+    except RuntimeError as error:  # configuration or provider errors: for the operator, not the visitor
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 @router.get("/health", response_model=HealthResponse)
