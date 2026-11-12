@@ -71,7 +71,7 @@ flowchart TD
 - **벡터 검색만 사용:** 키워드 검색(PostgreSQL 전문 검색)은 한국어 조사를 떼지 못해 거의 맞지 않았고, 섞어 쓰면(Hybrid) 오히려 낮았습니다(dev 재현율 Vector 0.951 · Hybrid 0.932 · Keyword 0.016). 세 방식 모두 실험 CLI로 비교할 수 있습니다.
 - **두 단계 거절:** 근거가 없으면 모델을 아예 부르지 않고, 작성 단계에서 모델이 거절해도 그대로 따릅니다.
 
-단계별 세부 규칙과 알려진 한계는 [docs/how-it-works.md](docs/how-it-works.md), 실험 숫자는 [docs/experiments.md](docs/experiments.md)에 있습니다.
+단계별 세부 규칙과 알려진 한계는 [docs/how-it-works.md](docs/how-it-works.md), 실험 숫자는 [docs/experiments.md](docs/experiments.md), 만들면서 부딪힌 문제와 해결 과정은 [docs/troubleshooting.md](docs/troubleshooting.md)에 있습니다.
 
 FastAPI · SQLAlchemy · PostgreSQL 16 · pgvector · Gemini (`gemini-3.5-flash-lite`, `gemini-embedding-001`) · Next.js · Docker Compose · GitHub Actions
 
