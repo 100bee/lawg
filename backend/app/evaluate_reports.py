@@ -15,6 +15,7 @@ from statistics import mean
 
 from app.config import settings
 from app.database import SessionLocal, init_database
+from app.models import RetrievalTrace
 from app.services import report
 from app.services.ai import ContentBlocked, ProviderBusy
 
@@ -53,8 +54,9 @@ def cached(call, cache_path: Path, counter: Counter):
     return wrapper
 
 
-def score(item: dict, response, titles: dict[str, str]) -> dict:
-    """One row per item. response is a ReportResponse, or a string naming the error."""
+def score(item: dict, response, titles: dict[str, str], evidence_titles: list[str] = ()) -> dict:
+    """One row per item. response is a ReportResponse, or a string naming the error.
+    evidence_titles: what passed the evidence gate (from the trace); the response itself keeps only cited sources."""
     row = {"id": item["id"], "category": item["category"], "role": item["role"],
            "expected_refusal": item["refusal"], "answerable": item["answerable"], "pair": item.get("pair")}
     if isinstance(response, str):
@@ -64,6 +66,7 @@ def score(item: dict, response, titles: dict[str, str]) -> dict:
     cited = sorted({by_id[source] for source in response.report.cited_ids()}) if response.report else []
     laws = sorted({by_id[law.source] for law in response.report.laws}) if response.report else []
     expected = set(item["expected_documents"])
+    retrieved = sorted({titles.get(title, title) for title in evidence_titles})
     predicted_refusal = response.refusal.kind if response.refusal else ("ask_role" if not response.report else None)
     return {
         **row,
@@ -72,9 +75,9 @@ def score(item: dict, response, titles: dict[str, str]) -> dict:
         "predicted_refusal": predicted_refusal,
         "cited": cited,
         "cited_laws": laws,
-        "retrieved": sorted(set(by_id.values())),
+        "retrieved": retrieved,
         "citation_recall": len(expected & set(cited)) / len(expected) if expected else None,
-        "retrieval_recall": len(expected & set(by_id.values())) / len(expected) if expected else None,
+        "retrieval_recall": len(expected & set(retrieved)) / len(expected) if expected else None,
     }
 
 
@@ -146,7 +149,9 @@ def main() -> None:
             except (ContentBlocked, ProviderBusy, RuntimeError, ValueError) as error:  # ValueError: stale index
                 database.rollback()
                 response = type(error).__name__
-            rows.append({**score(item, response, titles), "seconds": round(time.perf_counter() - started, 2)})
+            trace = None if isinstance(response, str) else database.get(RetrievalTrace, response.trace_id)
+            evidence = [chunk["title"] for chunk in trace.retrieved_chunks if chunk["accepted"]] if trace else []
+            rows.append({**score(item, response, titles, evidence), "seconds": round(time.perf_counter() - started, 2)})
             print(f"[{index}/{len(items)}] {item['id']} {rows[-1].get('predicted_refusal') or rows[-1].get('error') or 'report'}",
                   flush=True)
             if counter["model_calls"] > calls_before and settings.ai_provider != "local":

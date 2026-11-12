@@ -86,9 +86,9 @@ def test_report_cites_verbatim_statute_without_its_heading(gemini):
     assert result.sources[0].effective_date.isoformat() == "2026-10-02"
     assert "010-1234-5678" not in calls["query"] and "010-1234-5678" not in str(calls["payload"])
     assert "거래 사기" in calls["query"]  # legal terms join the story in the search query
-    # each kind gets its own slots so precedents and guides cannot crowd out statutes; only sentencing is by category
+    # each kind gets its own slots so precedents and guides cannot crowd out statutes
     assert calls["filters"] == {"statute": (8, None), "precedent": (2, None), "sentencing": (1, "fraud"),
-                                "guide": (3, None)}
+                                "guide": (3, None), "contact": (3, "fraud")}
 
 
 @pytest.mark.parametrize(("request_kind", "category", "expected"), [
@@ -127,6 +127,25 @@ def test_model_refusal_or_bad_citation_becomes_no_evidence(gemini, bad):
     result = report.build_report(FakeSession(), "사건")
 
     assert result.report is None and result.refusal.kind == "no_evidence"
+
+
+def test_help_lines_skip_the_relevance_gate(gemini, monkeypatch):
+    state, _ = gemini
+    state["chunks"] = [statute(), statute(title="ECRM 신고", content="경찰청 사이버범죄 신고", document_type="contact")]
+    monkeypatch.setattr(report, "evidence_chunks", lambda chunks, mode: chunks[:1])  # the gate keeps only the statute
+    state["draft"] = draft(actions=[Cited(text="ECRM에 신고합니다.", sources=["S2"])])
+    result = report.build_report(FakeSession(), "사건")
+
+    assert [(source.id, source.title, source.kind) for source in result.sources] == [
+        ("S1", "형법 제347조 (사기)", "statute"), ("S2", "ECRM 신고", "guide")]
+
+
+def test_only_cited_sources_are_returned(gemini):
+    state, _ = gemini
+    state["chunks"] = [statute(), statute(title="형법 제311조 (모욕)")]
+    result = report.build_report(FakeSession(), "사건")
+
+    assert [source.id for source in result.sources] == ["S1"]  # S2 was found but not cited
 
 
 def test_a_guide_cited_as_a_law_is_dropped_not_fatal(gemini):

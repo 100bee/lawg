@@ -1,6 +1,6 @@
 ---
 title: 중앙디지털성범죄피해자지원센터 상담 안내
-document_type: guide
+document_type: contact
 url: https://d4u.stop.or.kr
 checked_on: 2026-11-12
 categories: obscenity

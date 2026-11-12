@@ -96,7 +96,9 @@ REFUSALS: dict[RefusalKind, Refusal] = {
 
 # Searched per kind: in one shared ranking, plain-language precedents and guides pushed statutes out of the top 5
 # (dev draft: expected-statute recall 0.93 -> 0.19 when the corpus grew from 19 to 148 sources; 0.905 with these).
-SOURCE_QUOTAS = {"statute": 8, "precedent": 2, "sentencing": 1, "guide": 3}
+# "contact" (where to report or get help: ECRM, 132, 1366) is picked by category, not rank: explainers outranked it.
+SOURCE_QUOTAS = {"statute": 8, "precedent": 2, "sentencing": 1, "guide": 3, "contact": 3}
+BY_CATEGORY = {"sentencing", "contact"}
 
 STATUTE_HEADING = re.compile(r"^제\d+조(?:의\d+)?\([^)]*\)\s*")
 SOURCE_KINDS = {"statute", "precedent", "sentencing", "guide"}
@@ -105,7 +107,7 @@ SOURCE_KINDS = {"statute", "precedent", "sentencing", "guide"}
 def _source(index: int, chunk: RetrievedChunk) -> Source:
     attributes = chunk.attributes
     kind = attributes.get("document_type")
-    kind = kind if kind in SOURCE_KINDS else "guide"
+    kind = kind if kind in SOURCE_KINDS else "guide"  # contact is shown as a guide
     return Source(
         id=f"S{index}", kind=kind, title=chunk.title,
         text=STATUTE_HEADING.sub("", chunk.content) if kind == "statute" else chunk.content,
@@ -209,12 +211,14 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
         embedding = (embed_texts([mask_sensitive_text(query)], task_type="RETRIEVAL_QUERY")[0]
                      if mode != "keyword" else None)
         for kind, top_k in SOURCE_QUOTAS.items():
-            # sentencing ranges differ by crime, so only that kind is narrowed to the classified category
+            # sentencing ranges and help lines differ by crime, so those kinds are narrowed to the category
             candidates += retrieve_chunks(database, query, mode=mode, top_k=top_k, document_type=kind,
-                                          category=category if kind == "sentencing" else None,
+                                          category=category if kind in BY_CATEGORY else None,
                                           query_embedding=embedding).chunks
         retrieval_ms = round((perf_counter() - retrieval_started) * 1000)
-        chunks = evidence_chunks(candidates, mode)
+        accepted = evidence_chunks(candidates, mode)
+        # help lines were already chosen by category, so the relevance gate does not apply to them
+        chunks = [chunk for chunk in candidates if chunk in accepted or chunk.attributes.get("document_type") == "contact"]
         sources = [_source(index, chunk) for index, chunk in enumerate(chunks, start=1)]
         if not any(source.kind == "statute" for source in sources):
             refusal_kind, sources = "no_evidence", []  # first gate: no model call without statute evidence
@@ -231,6 +235,8 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
             report = _validated(draft, sources)
             if report is None:
                 refusal_kind = "no_evidence"
+            # the visitor sees only what the report cites; every candidate stays in the trace
+            sources = [source for source in sources if report and source.id in report.cited_ids()]
 
     refusal = REFUSALS[refusal_kind] if refusal_kind else None
     total_ms = round((perf_counter() - started) * 1000)

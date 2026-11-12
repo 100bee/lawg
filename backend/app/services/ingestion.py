@@ -102,7 +102,7 @@ def ingest_markdown(database: Session, path: Path) -> tuple[Document, bool]:
     return ingest_markdown_text(database, path.name, raw_text)
 
 
-SEED_KINDS = ("statute", "precedent", "sentencing", "guide")
+SEED_KINDS = ("statute", "precedent", "sentencing", "guide", "contact")
 
 
 def ingest_sample_documents(database: Session) -> tuple[list[Document], int, int, int]:
