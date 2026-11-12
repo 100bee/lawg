@@ -1,5 +1,6 @@
 """Real PostgreSQL/pgvector checks. Each test rolls back its own transaction."""
 import os
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -99,8 +100,12 @@ def test_bad_uploads_return_400_and_do_not_replace_existing_document(client, dat
 
 
 def test_evaluation_uses_real_postgres_and_exports_configuration(client, database):
+    removed, _ = ingest_markdown_text(database, "statute-dropped.md", "---\ntitle: 빠진 조문\ndocument_type: statute\n---\n본문")
+    upload, _ = ingest_markdown_text(database, "upload.md", "# 업로드\n운영 문서")
     seed = client.post("/api/documents/seed")
     assert seed.status_code == 200 and seed.json()["failed"] == 0
+    # a statute file taken out of the folder stops being searchable; other uploads stay
+    assert database.get(Document, removed.id) is None and database.get(Document, upload.id) is not None
     result = client.post("/api/evaluations/compare?repetitions=1&split=challenge")
     assert result.status_code == 200
     payload = result.json()
@@ -108,7 +113,7 @@ def test_evaluation_uses_real_postgres_and_exports_configuration(client, databas
     assert len(payload["results"]) == 3
     assert payload["provider"] == "local"
     assert len(payload["dataset_sha256"]) == 64
-    assert payload["document_count"] == 19  # 16 statutes + 3 guides
+    assert payload["document_count"] == len(list(Path(settings.sample_data_dir).glob("*.md"))) + 1  # + the upload
     assert all(row["unanswerable_cases"] == 3 for row in payload["results"])
 
 

@@ -1,6 +1,6 @@
 ---
 title: 대한법률구조공단 전화 법률상담 132
-document_type: guide
+document_type: contact
 url: https://www.klac.or.kr
 checked_on: 2026-11-12
 categories: fraud,insult,defamation,obscenity,account,threat

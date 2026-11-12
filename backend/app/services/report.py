@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import RetrievalTrace
 from app.schemas import Category, LawItem, Reading, Refusal, RefusalKind, Report, ReportResponse, Role, Source, Term
-from app.services.ai import structured_call
+from app.services.ai import embed_texts, structured_call
 from app.services.grounding import evidence_chunks
-from app.services.redaction import mask_story
+from app.services.redaction import mask_sensitive_text, mask_story
 from app.services.retrieval import RetrievedChunk, retrieve_chunks
 
 
@@ -44,8 +44,8 @@ CLASSIFY_INSTRUCTIONS = """아래 사건 설명은 사용자가 겪은 온라인
 WRITE_INSTRUCTIONS = """너는 게임·커뮤니티 이용자를 위한 법령 정보 안내 도구다. 법률 상담이 아니며 개별 사건의 결론을 내리지 않는다.
 제공된 근거 자료(evidence의 S1, S2 …)만 사용해 사건 정리 리포트를 한국어로 쓴다.
 - summary: 사건을 2~3문장으로 중립적으로 요약한다. 욕설 원문은 반복하지 않는다.
-- laws: 근거 자료의 조문(statute)과 판례(precedent) 중 이 사건과 관련될 수 있는 것만 고른다. source에 S 번호, plain에 일반인이 이해할 쉬운 풀이 1~2문장. 해당한다고 단정하지 않고 "~될 수 있습니다"로 쓴다. 판례는 그 판례가 밝힌 판단 기준만 옮기고, 이 사건도 같다고 일반화하지 않는다.
-- penalty: 고른 조문에 적힌 법정형을 옮기고, 근거 자료에 양형기준(sentencing)이 있으면 그 권고 범위도 옮긴다. sources에 해당 S 번호를 넣는다. 이 사람이 받을 형을 예측하지 않는다. 실제 형은 재판에서 정해진다는 점을 덧붙인다.
+- laws: 근거 자료의 조문(statute)과 판례(precedent) 중 이 사건과 관련될 수 있는 것만 고른다. source에 S 번호, plain에 일반인이 이해할 쉬운 풀이 1~2문장. 해당한다고 단정하지 않고 "~될 수 있습니다"로 쓴다. 판례는 그 판례가 밝힌 판단 기준만 옮기고, 이 사건도 같다고 일반화하지 않는다. 비슷한 사안에서 결론이 다른 판례가 함께 있으면 둘 다 고르고 무엇이 달랐는지 쓴다.
+- penalty: 고른 조문에 적힌 법정형을 옮기고, 근거 자료의 양형기준(sentencing)이 고른 조문의 범죄에 해당할 때만 그 권고 범위(기본 영역)도 옮긴다. sources에 해당 S 번호를 넣는다. 이 사람이 받을 형을 예측하지 않는다. 실제 형은 재판에서 정해진다는 점을 덧붙인다.
 - facts_to_check: 결론에 영향을 줄 사실을 질문 형태로 3~5개.
 - actions: role에 맞게 지금 할 수 있는 일 3~5개. 피해자(victim)·주변인(third_party)에게는 증거 보전과 신고를, 행동을 한 사람(offender)에게는 추가 행동 중단, 피해 회복, 변호인 조력을 안내한다. 근거 자료에 있는 내용이면 sources에 S 번호를 넣는다. 근거 자료에 없는 연락처·기관명·숫자는 쓰지 않는다.
 - prepare: 준비할 자료 2~4개.
@@ -94,6 +94,12 @@ REFUSALS: dict[RefusalKind, Refusal] = {
     ),
 }
 
+# Searched per kind: in one shared ranking, plain-language precedents and guides pushed statutes out of the top 5
+# (dev draft: expected-statute recall 0.93 -> 0.19 when the corpus grew from 19 to 148 sources; 0.905 with these).
+# "contact" (where to report or get help: ECRM, 132, 1366) is picked by category, not rank: explainers outranked it.
+SOURCE_QUOTAS = {"statute": 8, "precedent": 2, "sentencing": 1, "guide": 3, "contact": 3}
+BY_CATEGORY = {"sentencing", "contact"}
+
 STATUTE_HEADING = re.compile(r"^제\d+조(?:의\d+)?\([^)]*\)\s*")
 SOURCE_KINDS = {"statute", "precedent", "sentencing", "guide"}
 
@@ -101,7 +107,7 @@ SOURCE_KINDS = {"statute", "precedent", "sentencing", "guide"}
 def _source(index: int, chunk: RetrievedChunk) -> Source:
     attributes = chunk.attributes
     kind = attributes.get("document_type")
-    kind = kind if kind in SOURCE_KINDS else "guide"
+    kind = kind if kind in SOURCE_KINDS else "guide"  # contact is shown as a guide
     return Source(
         id=f"S{index}", kind=kind, title=chunk.title,
         text=STATUTE_HEADING.sub("", chunk.content) if kind == "statute" else chunk.content,
@@ -121,13 +127,15 @@ def _validated(draft: ReportDraft, sources: list[Source]) -> Report | None:
     except ValidationError:
         return None
     kinds = {source.id: source.kind for source in sources}
-    if (not report.summary.strip()
-            or any(kinds.get(item.source) not in ("statute", "precedent") for item in report.laws)
+    # a guide or guideline cited as a law is dropped, not fatal: guide text often reads like the statute it explains
+    laws = [item for item in report.laws if kinds.get(item.source) not in ("guide", "sentencing")]
+    if (not report.summary.strip() or not laws
+            or any(kinds.get(item.source) not in ("statute", "precedent") for item in laws)
             # a penalty sentence with a number must cite; "실제 형은 재판에서 정해집니다" needs no source
             or any(not claim.sources and re.search(r"\d", claim.text) for claim in report.penalty)
             or not report.cited_ids() <= kinds.keys()):
         return None
-    return report
+    return report.model_copy(update={"laws": laws})
 
 
 # --- local provider (CI and key-free development): keyword rules instead of a model ---
@@ -199,9 +207,18 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
     retrieval_ms = 0
     if refusal_kind is None and role != "unclear":
         query = " ".join([masked, *(legal for term in reading.terms for legal in term.legal)])
-        retrieval = retrieve_chunks(database, query, mode=settings.report_retrieval_mode)
-        retrieval_ms, candidates = retrieval.elapsed_ms, retrieval.chunks
-        chunks = evidence_chunks(candidates, retrieval.mode)
+        mode, retrieval_started = settings.report_retrieval_mode, perf_counter()
+        embedding = (embed_texts([mask_sensitive_text(query)], task_type="RETRIEVAL_QUERY")[0]
+                     if mode != "keyword" else None)
+        for kind, top_k in SOURCE_QUOTAS.items():
+            # sentencing ranges and help lines differ by crime, so those kinds are narrowed to the category
+            candidates += retrieve_chunks(database, query, mode=mode, top_k=top_k, document_type=kind,
+                                          category=category if kind in BY_CATEGORY else None,
+                                          query_embedding=embedding).chunks
+        retrieval_ms = round((perf_counter() - retrieval_started) * 1000)
+        accepted = evidence_chunks(candidates, mode)
+        # help lines were already chosen by category, so the relevance gate does not apply to them
+        chunks = [chunk for chunk in candidates if chunk in accepted or chunk.attributes.get("document_type") == "contact"]
         sources = [_source(index, chunk) for index, chunk in enumerate(chunks, start=1)]
         if not any(source.kind == "statute" for source in sources):
             refusal_kind, sources = "no_evidence", []  # first gate: no model call without statute evidence
@@ -218,6 +235,8 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
             report = _validated(draft, sources)
             if report is None:
                 refusal_kind = "no_evidence"
+            # the visitor sees only what the report cites; every candidate stays in the trace
+            sources = [source for source in sources if report and source.id in report.cited_ids()]
 
     refusal = REFUSALS[refusal_kind] if refusal_kind else None
     total_ms = round((perf_counter() - started) * 1000)
@@ -231,7 +250,7 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
         answer=json.dumps({"report": report.model_dump() if report else None,
                            "refusal": refusal.kind if refusal else None}, ensure_ascii=False),
         grounded=report is not None,
-        top_score=candidates[0].score if candidates else 0.0,
+        top_score=max((chunk.score for chunk in candidates), default=0.0),
         provider=settings.ai_provider,
         model=settings.chat_model,
         prompt_version=settings.prompt_version,

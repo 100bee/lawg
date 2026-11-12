@@ -1,6 +1,6 @@
 ---
 title: 경찰청 사이버범죄 신고시스템(ECRM) 신고 안내
-document_type: guide
+document_type: contact
 url: https://ecrm.police.go.kr
 checked_on: 2026-11-12
 categories: fraud,insult,defamation,obscenity,account,threat
