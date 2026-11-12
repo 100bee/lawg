@@ -56,11 +56,11 @@ class RetrievalResult:
     mode: RetrievalMode
 
 
-def _filters(statement, service: str | None, incident_type: str | None):
-    if service:
-        statement = statement.where(Document.service == service)
-    if incident_type:
-        statement = statement.where(Document.incident_type == incident_type)
+def _filters(statement, document_type: str | None, category: str | None):
+    if document_type:
+        statement = statement.where(Document.document_type == document_type)
+    if category:  # front matter "categories: fraud,account"; no category name is a substring of another
+        statement = statement.where(DocumentChunk.attributes["categories"].astext.contains(category))
     return statement
 
 
@@ -102,8 +102,8 @@ def calculate_retrieval_score(
 def retrieve_chunks(
     database: Session,
     question: str,
-    service: str | None = None,
-    incident_type: str | None = None,
+    document_type: str | None = None,
+    category: str | None = None,
     top_k: int | None = None,
     mode: RetrievalMode = "hybrid",
     *,
@@ -134,7 +134,7 @@ def retrieve_chunks(
             .order_by(distance)
             .limit(settings.retrieval_candidate_k)
         )
-        vector_statement = _filters(vector_statement, service, incident_type)
+        vector_statement = _filters(vector_statement, document_type, category)
         vector_rows = database.execute(vector_statement).all()
 
     keyword_search_text = _keyword_search_text(question)
@@ -151,7 +151,7 @@ def retrieve_chunks(
             .order_by(keyword_rank.desc())
             .limit(settings.retrieval_candidate_k)
         )
-        keyword_statement = _filters(keyword_statement, service, incident_type)
+        keyword_statement = _filters(keyword_statement, document_type, category)
         keyword_rows = database.execute(keyword_statement).all()
 
     candidates: dict[uuid.UUID, dict] = {}

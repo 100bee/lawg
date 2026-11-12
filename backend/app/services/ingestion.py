@@ -1,4 +1,5 @@
 import hashlib
+import logging
 from pathlib import Path
 
 from sqlalchemy import select
@@ -101,6 +102,9 @@ def ingest_markdown(database: Session, path: Path) -> tuple[Document, bool]:
     return ingest_markdown_text(database, path.name, raw_text)
 
 
+SEED_KINDS = ("statute", "precedent", "sentencing", "guide")
+
+
 def ingest_sample_documents(database: Session) -> tuple[list[Document], int, int, int]:
     data_directory = Path(settings.sample_data_dir)
     documents: list[Document] = []
@@ -108,14 +112,25 @@ def ingest_sample_documents(database: Session) -> tuple[list[Document], int, int
     skipped = 0
     failed = 0
 
-    for path in sorted(data_directory.glob("*.md")):
+    paths = sorted(data_directory.glob("*.md"))
+    for path in paths:
         try:
             document, created = ingest_markdown(database, path)
             documents.append(document)
             indexed += int(created)
             skipped += int(not created)
         except Exception:
+            logging.getLogger(__name__).exception("could not index %s", path.name)
             database.rollback()
             failed += 1
 
+    # a source file removed from the folder must stop being cited
+    # shortcut: an upload whose front matter says statute/precedent/sentencing/guide is removed too; mark uploads if they matter
+    # kept: matched by content (a renamed file keeps its first name) or by name (a file that failed to re-index this time)
+    stale = select(Document).where(Document.document_type.in_(SEED_KINDS),
+                                   Document.id.not_in([document.id for document in documents]),
+                                   Document.source_name.not_in([path.name for path in paths]))
+    for document in database.scalars(stale).all():
+        database.delete(document)
+    database.commit()
     return documents, indexed, skipped, failed

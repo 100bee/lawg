@@ -64,12 +64,14 @@ def gemini(monkeypatch):
         calls["payload"] = payload
         return state["draft"], 100, 50
 
-    def retrieve(database, query, *, mode):
+    def retrieve(database, query, *, mode, top_k, document_type, category, query_embedding):
         calls["retrieve"] += 1
         calls["query"] = query
-        return RetrievalResult(state["chunks"], 3, mode)
+        calls.setdefault("filters", {})[document_type] = (top_k, category)
+        return RetrievalResult([c for c in state["chunks"] if c.attributes["document_type"] == document_type], 3, mode)
 
     monkeypatch.setattr(report, "structured_call", structured_call)
+    monkeypatch.setattr(report, "embed_texts", lambda texts, task_type: [[0.0]] * len(texts))
     monkeypatch.setattr(report, "retrieve_chunks", retrieve)
     monkeypatch.setattr(report, "evidence_chunks", lambda chunks, mode: chunks)
     return state, calls
@@ -84,6 +86,9 @@ def test_report_cites_verbatim_statute_without_its_heading(gemini):
     assert result.sources[0].effective_date.isoformat() == "2026-10-02"
     assert "010-1234-5678" not in calls["query"] and "010-1234-5678" not in str(calls["payload"])
     assert "거래 사기" in calls["query"]  # legal terms join the story in the search query
+    # each kind gets its own slots so precedents and guides cannot crowd out statutes; only sentencing is by category
+    assert calls["filters"] == {"statute": (8, None), "precedent": (2, None), "sentencing": (1, "fraud"),
+                                "guide": (3, None)}
 
 
 @pytest.mark.parametrize(("request_kind", "category", "expected"), [
@@ -122,6 +127,18 @@ def test_model_refusal_or_bad_citation_becomes_no_evidence(gemini, bad):
     result = report.build_report(FakeSession(), "사건")
 
     assert result.report is None and result.refusal.kind == "no_evidence"
+
+
+def test_a_guide_cited_as_a_law_is_dropped_not_fatal(gemini):
+    state, _ = gemini
+    state["chunks"] = [statute(), statute(title="생활법령 해설", content="속이고 돈을 받으면 사기죄", document_type="guide")]
+    state["draft"] = draft(laws=[LawItem(source="S1", plain="사기"), LawItem(source="S2", plain="해설")])
+    result = report.build_report(FakeSession(), "사건")
+
+    assert [item.source for item in result.report.laws] == ["S1"]
+
+    state["draft"] = draft(laws=[LawItem(source="S2", plain="해설만")])
+    assert report.build_report(FakeSession(), "사건").refusal.kind == "no_evidence"
 
 
 def test_unclear_role_asks_instead_of_searching(gemini):

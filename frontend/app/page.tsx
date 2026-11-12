@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, FormEvent, ReactNode, useEffect, useRef, useState } from "react";
-import type { Category, Cited, RefusalKind, Report, ReportResponse, Role, Source, SourceKind } from "./report";
+import { Fragment, FormEvent, useEffect, useRef, useState } from "react";
+import type { Category, RefusalKind, Report, ReportResponse, Role, Source, SourceKind } from "./report";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
@@ -37,6 +37,8 @@ const STAGES: { after: number; text: string }[] = [
   { after: 3000, text: "리포트를 쓰고 있어요" },
   { after: 10000, text: "평소보다 오래 걸리고 있어요. AI 서버가 바쁘면 다시 시도하느라 20초쯤 걸릴 수 있어요." },
 ];
+// Fixed text, not model output: 『2026 양형기준』 해설 p.1–2 (적용범위)
+const SENTENCING_NOTE = "양형기준은 공소 제기 때 19세 이상인 피고인에게 쓰는 권고 기준이에요. 미수범에는 적용되지 않고, 스토킹을 빼면 벌금형을 고른 사건에도 적용되지 않아요.";
 const ADVICE = "사건마다 사정이 달라서 변호사나 대한법률구조공단(132)의 상담이 필요합니다.";
 
 const anchor = (id: string) => `source-${id}`;
@@ -299,7 +301,13 @@ function Sheet({ result, report, loading, onRole }: {
           })}
         </section>
 
-        <CitedSection title="처벌 범위 참고" items={report.penalty} render={(claim) => <p key={claim.text}>{claim.text}{cites(claim.sources)}</p>} />
+        {report.penalty.length > 0 && (
+          <section className="sec">
+            <h3>처벌 범위 참고</h3>
+            {report.penalty.map((claim) => <p key={claim.text}>{claim.text}{cites(claim.sources)}</p>)}
+            {citesSentencing(report, byId) && <p className="plain">{SENTENCING_NOTE}</p>}
+          </section>
+        )}
 
         {report.facts_to_check.length > 0 && (
           <section className="sec">
@@ -356,14 +364,8 @@ function Sheet({ result, report, loading, onRole }: {
   );
 }
 
-function CitedSection({ title, items, render }: { title: string; items: Cited[]; render: (claim: Cited) => ReactNode }) {
-  if (items.length === 0) return null;
-  return (
-    <section className="sec">
-      <h3>{title}</h3>
-      {items.map(render)}
-    </section>
-  );
+function citesSentencing(report: Report, byId: Map<string, Source>) {
+  return report.penalty.some((claim) => claim.sources.some((id) => byId.get(id)?.kind === "sentencing"));
 }
 
 function RoleChoice({ current, disabled, onRole }: { current: Role; disabled: boolean; onRole: (role: Role) => void }) {
@@ -401,6 +403,7 @@ function reportText(result: ReportResponse, report: Report): string {
       return source ? [`- ${source.title} [${source.id}]`, `  ${source.text}`, `  쉬운 말로: ${item.plain}`] : [];
     }),
     ...list("처벌 범위 참고", report.penalty.map((claim) => claim.text + cites(claim.sources))),
+    citesSentencing(report, byId) ? SENTENCING_NOTE : "",
     ...list("확인이 필요한 사실", report.facts_to_check),
     ...list("지금 할 수 있는 일", report.actions.map((claim) => claim.text + cites(claim.sources))),
     ...list("준비할 것", report.prepare),
