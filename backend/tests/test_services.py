@@ -1,11 +1,14 @@
 import math
 from types import SimpleNamespace
 
+import pytest
+
 from app.services import ai
 from app.services.ai import embed_texts, generate_answer
 from app.services.classifier import infer_incident_type
 from app.services.evaluation import select_recommended_mode
-from app.services.redaction import mask_sensitive_text
+from app.services.chunking import split_document
+from app.services.redaction import mask_sensitive_text, mask_story
 from app.services.retrieval import calculate_retrieval_score
 from app.schemas import EvaluationResponse
 
@@ -96,3 +99,22 @@ def test_openai_answer_uses_responses_api(monkeypatch) -> None:
     assert captured["text_format"] is ai.GroundedDraft
     assert generated.input_tokens == 120
     assert generated.output_tokens == 30
+
+
+@pytest.mark.parametrize(("story", "hidden", "kept"), [
+    ("제 이름은 홍길동이고 010-1234-5678로 연락 왔어요", ["홍길동", "010-1234-5678"], ["[이름]", "[전화번호]"]),
+    ("국민은행 123-456-789012로 20만원 보냈어요", ["123-456-789012"], ["20만원", "[계좌번호]"]),
+    ("주민번호 900101-1234567 알려줬어요", ["900101-1234567"], ["[주민번호]"]),
+    ("철수씨가 욕했어요. 판매자님이랑 아저씨는 몰라요", ["철수"], ["판매자님", "아저씨"]),
+    ("씨발이라고 했어요. 닉네임 이름이 바뀌었어요", [], ["씨발", "이름이 바뀌었어요"]),
+])
+def test_story_masking_hides_personal_data_but_keeps_the_story(story, hidden, kept) -> None:
+    masked = mask_story(story)
+    assert all(value not in masked for value in hidden)
+    assert all(value in masked for value in kept)
+
+
+def test_statutes_and_guides_are_one_chunk_each() -> None:
+    body = "제2조(정의) " + "가. 상대방에게 접근하는 행위\n" * 200
+    chunks = split_document(body, {"document_type": "statute", "title": "스토킹처벌법 제2조 (정의)"})
+    assert len(chunks) == 1 and chunks[0].heading == "스토킹처벌법 제2조 (정의)"

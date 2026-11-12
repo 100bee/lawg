@@ -102,14 +102,44 @@ def test_gemini_structured_answer_and_token_usage(monkeypatch):
     assert generated.output_tokens == 23
 
 
-def test_gemini_rate_limit_is_reported_without_fallback_or_secret(monkeypatch):
+def test_gemini_rate_limit_retries_once_then_reports_without_secret(monkeypatch):
     monkeypatch.setattr(settings, "gemini_api_key", "fake-secret")
+    monkeypatch.setattr(settings, "gemini_retry_delay_seconds", 0)
+    calls = []
     def post(url, **kwargs):
+        calls.append(url)
         return httpx.Response(429, json={"error": "fake-secret"}, request=httpx.Request("POST", url))
     monkeypatch.setattr(ai.httpx, "post", post)
     with pytest.raises(RuntimeError, match="요청 한도") as error:
         ai._gemini_request("test-model", "generateContent", {})
     assert "fake-secret" not in str(error.value)
+    assert len(calls) == 2
+
+
+def test_gemini_overload_falls_back_to_the_other_model(monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-secret")
+    monkeypatch.setattr(settings, "gemini_retry_delay_seconds", 0)
+    calls = []
+    def post(url, **kwargs):
+        calls.append(url)
+        if "primary" in url:
+            return httpx.Response(503, request=httpx.Request("POST", url))
+        return httpx.Response(200, json={"ok": True}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(ai.httpx, "post", post)
+    assert ai._gemini_request("primary", "generateContent", {}, fallback_model="backup") == {"ok": True}
+    assert [url.split("/models/")[1] for url in calls] == ["primary:generateContent"] * 2 + ["backup:generateContent"]
+
+
+def test_gemini_bad_request_is_not_retried(monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-secret")
+    calls = []
+    def post(url, **kwargs):
+        calls.append(url)
+        return httpx.Response(400, json={"error": "fake-secret"}, request=httpx.Request("POST", url))
+    monkeypatch.setattr(ai.httpx, "post", post)
+    with pytest.raises(RuntimeError, match="호출에 실패") as error:
+        ai._gemini_request("model", "generateContent", {}, fallback_model="backup")
+    assert "fake-secret" not in str(error.value) and len(calls) == 1
 
 
 def test_recall_requires_all_relevant_documents_and_gate_matches_chat(tmp_path, monkeypatch):

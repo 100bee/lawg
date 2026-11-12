@@ -107,7 +107,7 @@ def test_evaluation_uses_real_postgres_and_exports_configuration(client, databas
     assert len(payload["results"]) == 3
     assert payload["provider"] == "local"
     assert len(payload["dataset_sha256"]) == 64
-    assert payload["document_count"] == 12
+    assert payload["document_count"] == 19  # 16 statutes + 3 guides
     assert all(row["unanswerable_cases"] == 3 for row in payload["results"])
 
 

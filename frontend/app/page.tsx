@@ -82,7 +82,7 @@ export default function Page() {
       <main className="wrap" aria-busy={loading}>
         <section className="intake">
           <h1>무슨 일이 있었나요?</h1>
-          <p>평소 말투 그대로 적어 주세요. 이름, 계좌번호, 전화번호는 저장하기 전에 자동으로 가립니다.</p>
+          <p>평소 말투 그대로 적어 주세요. 실명, 계좌번호, 전화번호는 빼고 적어 주세요. 들어가더라도 저장하기 전에 최대한 가립니다.</p>
           <form className="box" onSubmit={onSubmit}>
             <label htmlFor="story" className="srOnly">사건 설명</label>
             <textarea
