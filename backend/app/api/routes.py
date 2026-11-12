@@ -1,7 +1,4 @@
-import json
 import uuid
-from pathlib import Path
-from time import perf_counter
 from typing import Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
@@ -13,10 +10,6 @@ from app.config import settings
 from app.database import get_db
 from app.models import Document, RetrievalTrace
 from app.schemas import (
-    ChatRequest,
-    ChatResponse,
-    Citation,
-    Diagnostics,
     DocumentResponse,
     EvaluationResponse,
     HealthResponse,
@@ -25,31 +18,26 @@ from app.schemas import (
     RetrievalComparisonResponse,
     SeedResponse,
 )
-from app.services.answering import answer_with_evidence
-from app.services.classifier import infer_incident_type
+from app.services.ai import ContentBlocked
 from app.services.evaluation import run_evaluation, run_retrieval_comparison
 from app.services.ingestion import ingest_markdown_text, ingest_sample_documents
-from app.services.redaction import mask_sensitive_data, mask_sensitive_text
-from app.services.retrieval import retrieve_chunks
+from app.services.redaction import mask_sensitive_data
+from app.services.report import build_report
 
 
 router = APIRouter()
-EXAMPLES = Path(__file__).resolve().parents[2] / "data" / "examples"
 
 
 @router.post("/report", response_model=ReportResponse)
-def report(request: ReportRequest) -> ReportResponse:
-    # shortcut: serves the mockup examples so the screen can be built; step 3 replaces this with the real pipeline
-    if any(word in request.story for word in ("지우", "안 걸리", "없애")):
-        name = "refused"
-    elif request.role == "offender" or (not request.role and any(w in request.story for w in ("판다고", "팔고", "받고 차단"))):
-        name = "offender"
-    else:
-        name = "victim"
-    body = json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
-    if request.role and name != "refused":
-        body["reading"]["role"] = request.role
-    return ReportResponse.model_validate(body)
+def report(request: ReportRequest, database: Session = Depends(get_db)) -> ReportResponse:
+    try:
+        return build_report(database, request.story, request.role)
+    except ContentBlocked as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except RuntimeError as error:
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -103,102 +91,6 @@ async def upload_document(
     return DocumentResponse.model_validate(document)
 
 
-@router.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest, database: Session = Depends(get_db)) -> ChatResponse:
-    total_started_at = perf_counter()
-    masked_question = mask_sensitive_text(request.question)
-    inferred_incident_type = infer_incident_type(masked_question)
-
-    try:
-        retrieval = retrieve_chunks(
-            database,
-            masked_question,
-            service=request.service,
-            incident_type=request.incident_type,
-            top_k=request.top_k,
-            mode=request.retrieval_mode,
-        )
-        result = answer_with_evidence(
-            masked_question,
-            retrieval.chunks,
-            mode=request.retrieval_mode,
-        )
-    except ValueError as error:
-        raise HTTPException(status_code=409, detail=str(error)) from error
-    except RuntimeError as error:
-        raise HTTPException(status_code=503, detail=str(error)) from error
-
-    generated = result.generated
-    retrieved_chunks = [
-        Citation(
-            document_id=chunk.document_id,
-            title=chunk.title,
-            source_name=chunk.source_name,
-            chunk_index=chunk.chunk_index,
-            heading=chunk.heading,
-            content=chunk.content,
-            score=chunk.score,
-            vector_score=chunk.vector_score,
-            keyword_score=chunk.keyword_score,
-            keyword_coverage=chunk.keyword_coverage,
-            keyword_matches=chunk.keyword_matches,
-        )
-        for chunk in retrieval.chunks
-    ]
-    used_chunks = {(chunk.document_id, chunk.chunk_index) for chunk in result.citations}
-    citations = [citation for citation in retrieved_chunks
-                 if (citation.document_id, citation.chunk_index) in used_chunks]
-    top_score = retrieval.chunks[0].score if retrieval.chunks else 0.0
-    trace = RetrievalTrace(
-        question=masked_question,
-        masked_question=masked_question,
-        inferred_incident_type=inferred_incident_type,
-        retrieved_chunks=[citation.model_dump(mode="json") for citation in retrieved_chunks],
-        answer=generated.text,
-        grounded=result.grounded,
-        top_score=top_score,
-        provider=settings.ai_provider,
-        model=settings.chat_model,
-        prompt_version=settings.prompt_version,
-        input_tokens=generated.input_tokens,
-        output_tokens=generated.output_tokens,
-        diagnostics={"retrieval_mode": request.retrieval_mode, "evidence_reason": generated.reason,
-                     "candidate_count": len(retrieval.chunks),
-                     "citations": [citation.model_dump(mode="json") for citation in citations]},
-        retrieval_ms=retrieval.elapsed_ms,
-        generation_ms=result.elapsed_ms,
-    )
-    database.add(trace)
-    database.commit()
-    database.refresh(trace)
-
-    total_ms = round((perf_counter() - total_started_at) * 1000)
-    return ChatResponse(
-        answer=generated.text,
-        grounded=result.grounded,
-        confidence=result.confidence,
-        citations=citations,
-        retrieved_chunks=retrieved_chunks,
-        trace_id=trace.id,
-        diagnostics=Diagnostics(
-            masked_question=masked_question,
-            inferred_incident_type=inferred_incident_type,
-            retrieval_ms=retrieval.elapsed_ms,
-            generation_ms=result.elapsed_ms,
-            total_ms=total_ms,
-            input_tokens=generated.input_tokens,
-            output_tokens=generated.output_tokens,
-            provider=settings.ai_provider,
-            model=trace.model,
-            prompt_version=settings.prompt_version,
-            top_score=top_score,
-            retrieval_mode=request.retrieval_mode,
-            evidence_reason=generated.reason,
-            candidate_count=len(retrieval.chunks),
-        ),
-    )
-
-
 @router.get("/traces/{trace_id}")
 def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
     trace = database.get(RetrievalTrace, trace_id)
@@ -208,7 +100,7 @@ def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
         "id": trace.id,
         "question": trace.question,
         "masked_question": trace.masked_question,
-        "incident_type": trace.inferred_incident_type,
+        "category": trace.inferred_incident_type,
         "retrieved_chunks": trace.retrieved_chunks,
         "answer": trace.answer,
         "grounded": trace.grounded,

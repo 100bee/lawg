@@ -2,10 +2,10 @@ import math
 from types import SimpleNamespace
 
 import pytest
+from pydantic import BaseModel
 
 from app.services import ai
-from app.services.ai import embed_texts, generate_answer
-from app.services.classifier import infer_incident_type
+from app.services.ai import embed_texts
 from app.services.evaluation import select_recommended_mode
 from app.services.chunking import split_document
 from app.services.redaction import mask_sensitive_text, mask_story
@@ -22,13 +22,6 @@ def test_masks_sensitive_values() -> None:
     assert "dev@example.com" not in masked
     assert "10.20.30.40" not in masked
     assert "abc.def.ghi" not in masked
-
-
-def test_infers_incident_types() -> None:
-    assert infer_incident_type("429 rate limit 오류가 발생했어") == "API"
-    assert infer_incident_type("문서 색인 worker가 processing에서 멈췄어") == "INGESTION"
-    assert infer_incident_type("pgvector DB connection이 부족해") == "INFRASTRUCTURE"
-    assert infer_incident_type("관련 없는 문서가 검색돼") == "RETRIEVAL"
 
 
 def test_local_embedding_is_deterministic_and_normalized() -> None:
@@ -68,37 +61,27 @@ def test_recommended_mode_prioritizes_quality_before_latency() -> None:
     assert select_recommended_mode([vector, hybrid]) == "hybrid"
 
 
-def test_openai_answer_uses_responses_api(monkeypatch) -> None:
+class Probe(BaseModel):
+    answer: str
+
+
+def test_openai_structured_call_uses_responses_api_without_storing(monkeypatch) -> None:
     captured: dict = {}
 
     class FakeResponses:
         def parse(self, **kwargs):
             captured.update(kwargs)
-            return SimpleNamespace(
-                output_parsed=ai.GroundedDraft(
-                    answerable=True,
-                    summary=[ai.CitedStatement(text="근거 기반 답변", source_ids=["S1"])],
-                    causes=[], checks=[], actions=[], follow_up_questions=[],
-                ),
-                usage=SimpleNamespace(input_tokens=120, output_tokens=30),
-            )
+            return SimpleNamespace(output_parsed=Probe(answer="ok"),
+                                   usage=SimpleNamespace(input_tokens=120, output_tokens=30))
 
-    fake_client = SimpleNamespace(responses=FakeResponses())
     monkeypatch.setattr(ai.settings, "ai_provider", "openai")
-    monkeypatch.setattr(ai, "_openai_client", lambda: fake_client)
+    monkeypatch.setattr(ai, "_openai_client", lambda: SimpleNamespace(responses=FakeResponses()))
+    parsed, input_tokens, output_tokens = ai.structured_call(
+        "지시", {"story": "key=sk-abcdefghijklmnop"}, Probe, max_output_tokens=100)
 
-    generated = generate_answer(
-        "429 오류 대응 방법",
-        "[S1] 429 Runbook",
-        [{"title": "429 Runbook", "heading": "대응", "content": "지수 백오프"}],
-    )
-
-    assert captured["model"] == ai.settings.openai_chat_model
-    assert captured["store"] is False
-    assert "evidence" in captured["input"]
-    assert captured["text_format"] is ai.GroundedDraft
-    assert generated.input_tokens == 120
-    assert generated.output_tokens == 30
+    assert parsed.answer == "ok" and (input_tokens, output_tokens) == (120, 30)
+    assert captured["store"] is False and captured["text_format"] is Probe
+    assert "sk-abcdefghijklmnop" not in captured["input"]
 
 
 @pytest.mark.parametrize(("story", "hidden", "kept"), [
