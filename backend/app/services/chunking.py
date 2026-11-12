@@ -21,6 +21,11 @@ def _find_heading(content: str) -> str:
 
 
 def split_document(content: str, metadata: dict[str, str]) -> list[Chunk]:
+    if metadata.get("document_type") in ("statute", "guide"):
+        # One article (or guide) = one chunk, so a citation always points at a whole article.
+        content = content.strip()
+        return [Chunk(index=0, heading=metadata.get("title", "본문")[:255], content=content,
+                      token_count=len(content.split()))] if content else []
     splitter = SentenceSplitter(
         chunk_size=settings.chunk_size,
         chunk_overlap=settings.chunk_overlap,

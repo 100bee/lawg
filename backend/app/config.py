@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     gemini_chat_model: str = "gemini-3.5-flash-lite"
     gemini_embedding_model: str = "gemini-embedding-001"
     gemini_timeout_seconds: float = Field(default=45, gt=0)
+    # Free-tier models return 503 under load; retry once, then try this model for generation (never embeddings).
+    gemini_fallback_chat_model: str | None = "gemini-3.1-flash-lite"
+    gemini_retry_delay_seconds: float = Field(default=2, ge=0)
     openai_api_key: str | None = None
     openai_chat_model: str = "gpt-5-mini"
     openai_embedding_model: str = "text-embedding-3-small"
@@ -36,7 +39,7 @@ class Settings(BaseSettings):
     minimum_keyword_matches: int = Field(default=2, ge=1)
     openai_timeout_seconds: float = Field(default=45, gt=0)
     prompt_version: str = "ragops-v2"
-    sample_data_dir: str = "data/incidents"
+    sample_data_dir: str = "data/sources"
     evaluation_dataset_path: str = "data/evaluations.jsonl"
 
     @property

@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
@@ -45,25 +46,43 @@ def embedding_fingerprint() -> str:
     return f"{settings.ai_provider}:{model}:{settings.embedding_dimensions}"
 
 
-def _gemini_request(model: str, method: str, payload: dict) -> dict:
+RETRYABLE_STATUS = {429, 500, 503, 504}
+
+
+def _gemini_request(model: str, method: str, payload: dict, *, fallback_model: str | None = None) -> dict:
+    """Retry once on overload/rate limit/timeout, then try fallback_model once (generation only)."""
     if not settings.gemini_api_key:
         raise RuntimeError("AI_PROVIDER=gemini 사용 시 .env에 GEMINI_API_KEY를 입력해 주세요.")
-    try:
-        response = httpx.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:{method}",
-            headers={"x-goog-api-key": settings.gemini_api_key},
-            json=payload,
-            timeout=settings.gemini_timeout_seconds,
-        )
-        if response.status_code == 429:
-            raise RuntimeError("Gemini 요청 한도에 도달했습니다. AI Studio에서 한도와 초기화 시각을 확인해 주세요.")
-        response.raise_for_status()
-        return response.json()
-    except httpx.HTTPError as error:
-        # Never reflect provider error bodies, request headers or API keys to clients.
-        raise RuntimeError("Gemini API 호출에 실패했습니다. 키, 모델 이름과 제공자 상태를 확인해 주세요.") from error
-    except ValueError as error:
-        raise RuntimeError("Gemini API 응답을 해석하지 못했습니다.") from error
+    attempts = [model, model] + ([fallback_model] if fallback_model and fallback_model != model else [])
+    last_status: int | str = ""
+    for attempt, current in enumerate(attempts):
+        if attempt:
+            time.sleep(settings.gemini_retry_delay_seconds * attempt)
+        try:
+            response = httpx.post(
+                f"https://generativelanguage.googleapis.com/v1beta/models/{current}:{method}",
+                headers={"x-goog-api-key": settings.gemini_api_key},
+                json=payload,
+                timeout=settings.gemini_timeout_seconds,
+            )
+        except httpx.TimeoutException:
+            last_status = "timeout"
+            continue
+        except httpx.HTTPError as error:
+            # Never reflect provider error bodies, request headers or API keys to clients.
+            raise RuntimeError("Gemini API 호출에 실패했습니다. 키, 모델 이름과 제공자 상태를 확인해 주세요.") from error
+        if response.status_code in RETRYABLE_STATUS:
+            last_status = response.status_code
+            continue
+        if response.is_error:
+            raise RuntimeError("Gemini API 호출에 실패했습니다. 키, 모델 이름과 제공자 상태를 확인해 주세요.")
+        try:
+            return response.json()
+        except ValueError as error:
+            raise RuntimeError("Gemini API 응답을 해석하지 못했습니다.") from error
+    if last_status == 429:
+        raise RuntimeError("Gemini 요청 한도에 도달했습니다. AI Studio에서 한도와 초기화 시각을 확인해 주세요.")
+    raise RuntimeError("Gemini가 지금 응답하지 않습니다(과부하). 잠시 뒤 다시 시도해 주세요.")
 
 
 def _openai_client() -> OpenAI:
