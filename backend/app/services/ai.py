@@ -159,30 +159,32 @@ def structured_call(instructions: str, payload: dict, schema: type[T], *, max_ou
     """One JSON-schema call to the chat model. Returns (parsed, input_tokens, output_tokens)."""
     data = json.dumps(mask_sensitive_data(payload), ensure_ascii=False)
     if settings.ai_provider == "gemini":
-        response = _gemini_request(settings.gemini_chat_model, "generateContent", {
-            "systemInstruction": {"parts": [{"text": instructions}]},
-            "contents": [{"role": "user", "parts": [{"text": data}]}],
-            "generationConfig": {"responseMimeType": "application/json",
-                                 "responseJsonSchema": schema.model_json_schema(),
-                                 "maxOutputTokens": max_output_tokens, "temperature": 0},
-        }, fallback_model=settings.gemini_fallback_chat_model)
-        usage = response.get("usageMetadata", {})
-        tokens = (usage.get("promptTokenCount", 0),
-                  usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0))
-        if response.get("promptFeedback", {}).get("blockReason"):
-            raise ContentBlocked(BLOCKED_MESSAGE)
-        candidate = (response.get("candidates") or [{}])[0]
-        finish = candidate.get("finishReason")
-        if finish in BLOCK_FINISH_REASONS:
-            raise ContentBlocked(BLOCKED_MESSAGE)
-        if finish != "STOP":
-            raise RuntimeError("모델 응답이 중간에 끊겼습니다. 잠시 뒤 다시 시도해 주세요.")
-        text = "".join(part.get("text", "") for part in candidate.get("content", {}).get("parts", [])
-                       if not part.get("thought"))
-        try:
-            return schema.model_validate_json(text), *tokens
-        except ValidationError as error:
-            raise RuntimeError("모델 응답 형식이 올바르지 않습니다. 잠시 뒤 다시 시도해 주세요.") from error
+        spent = [0, 0]
+        for attempt in range(2):  # the model occasionally returns JSON that misses the schema; ask once more
+            response = _gemini_request(settings.gemini_chat_model, "generateContent", {
+                "systemInstruction": {"parts": [{"text": instructions}]},
+                "contents": [{"role": "user", "parts": [{"text": data}]}],
+                "generationConfig": {"responseMimeType": "application/json",
+                                     "responseJsonSchema": schema.model_json_schema(),
+                                     "maxOutputTokens": max_output_tokens, "temperature": 0},
+            }, fallback_model=settings.gemini_fallback_chat_model)
+            usage = response.get("usageMetadata", {})
+            spent[0] += usage.get("promptTokenCount", 0)
+            spent[1] += usage.get("candidatesTokenCount", 0) + usage.get("thoughtsTokenCount", 0)
+            if response.get("promptFeedback", {}).get("blockReason"):
+                raise ContentBlocked(BLOCKED_MESSAGE)
+            candidate = (response.get("candidates") or [{}])[0]
+            finish = candidate.get("finishReason")
+            if finish in BLOCK_FINISH_REASONS:
+                raise ContentBlocked(BLOCKED_MESSAGE)
+            text = "".join(part.get("text", "") for part in candidate.get("content", {}).get("parts", [])
+                           if not part.get("thought"))
+            try:
+                if finish == "STOP":
+                    return schema.model_validate_json(text), *spent
+            except ValidationError:
+                pass
+        raise RuntimeError("모델 응답 형식이 올바르지 않습니다. 잠시 뒤 다시 시도해 주세요.")
     if settings.ai_provider == "openai":
         try:
             response = _openai_client().responses.parse(

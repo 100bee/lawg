@@ -154,3 +154,11 @@ def test_recall_requires_all_relevant_documents_and_gate_matches_chat(tmp_path, 
     assert result.recall_at_k == 0.5
     assert result.results[0].hit_at_k
     assert result.results[0].predicted_answerable == bool(evidence_chunks(retrieved, "hybrid"))
+
+
+def test_gemini_schema_miss_is_asked_once_more(monkeypatch):
+    monkeypatch.setattr(settings, "ai_provider", "gemini")
+    replies = iter(['{"answer": 1}', '{"answer": "ok"}'])
+    monkeypatch.setattr(ai, "_gemini_request", lambda *args, **kwargs: {
+        "candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": next(replies)}]}}]})
+    assert ai.structured_call("지시", {}, Probe, max_output_tokens=64)[0].answer == "ok"
