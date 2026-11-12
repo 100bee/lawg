@@ -8,6 +8,7 @@ for new or changed items; the free tier allows roughly 500 generation calls a da
 import argparse
 import hashlib
 import json
+import re
 import time
 from collections import Counter
 from pathlib import Path
@@ -17,7 +18,7 @@ from app.config import settings
 from app.database import SessionLocal, init_database
 from app.models import RetrievalTrace
 from app.services import report
-from app.services.ai import ContentBlocked, ProviderBusy
+from app.services.ai import ContentBlocked, ProviderBusy, embedding_fingerprint
 
 SOURCES = Path(__file__).resolve().parents[1] / "data" / "sources"
 
@@ -54,6 +55,36 @@ def cached(call, cache_path: Path, counter: Counter):
     return wrapper
 
 
+def cached_embeddings(embed, cache_path: Path, counter: Counter):
+    """Query embeddings too (the free tier allows about 1,000 a day), so a rescore with new labels calls no API."""
+    path = cache_path.with_suffix(".embeddings.json")
+    cache = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+
+    def wrapper(texts, *, task_type="RETRIEVAL_DOCUMENT"):
+        key = hashlib.sha256(json.dumps([embedding_fingerprint(), task_type, texts], ensure_ascii=False).encode()).hexdigest()
+        if key not in cache:
+            counter["embedding_calls"] += 1
+            cache[key] = embed(texts, task_type=task_type)
+            path.write_text(json.dumps(cache), encoding="utf-8")
+        return cache[key]
+
+    return wrapper
+
+
+PENALTY_NUMBER = re.compile(r"(\d+)(천만|백만|만|억)?원|\d+(?:년|월)")
+WON = {"": 1, "만": 10**4, "백만": 10**6, "천만": 10**7, "억": 10**8}
+
+
+def penalty_numbers(text: str) -> set[str]:
+    """Terms and amounts in a penalty sentence, amounts in won: "1년 6개월, 5천만 원" -> {"1년", "6월", "50000000원"}."""
+    text = re.sub(r"[\s,]", "", text).replace("개월", "월")
+    return {f"{int(match[1]) * WON[match[2] or '']}원" if match[1] else match[0] for match in PENALTY_NUMBER.finditer(text)}
+
+
+assert penalty_numbers("1년 6개월 이하, 5천만 원 이하의 벌금") == {"1년", "6월", "50000000원"}
+assert penalty_numbers("2,000만 원") == penalty_numbers("2천만원")
+
+
 def score(item: dict, response, titles: dict[str, str], evidence_titles: list[str] = ()) -> dict:
     """One row per item. response is a ReportResponse, or a string naming the error.
     evidence_titles: what passed the evidence gate (from the trace); the response itself keeps only cited sources."""
@@ -68,6 +99,8 @@ def score(item: dict, response, titles: dict[str, str], evidence_titles: list[st
     expected = set(item["expected_documents"])
     retrieved = sorted({titles.get(title, title) for title in evidence_titles})
     predicted_refusal = response.refusal.kind if response.refusal else ("ask_role" if not response.report else None)
+    texts = {source.id: source.text for source in response.sources}
+    claims = [claim for claim in response.report.penalty if penalty_numbers(claim.text)] if response.report else []
     return {
         **row,
         "predicted_role": response.reading.role,
@@ -77,6 +110,11 @@ def score(item: dict, response, titles: dict[str, str], evidence_titles: list[st
         "cited_laws": laws,
         "retrieved": retrieved,
         "citation_recall": len(expected & set(cited)) / len(expected) if expected else None,
+        # a term or amount the report states must appear in the sources that sentence cites
+        "penalty_claims": len(claims),
+        "penalty_grounded": sum(penalty_numbers(claim.text) <= set().union(*(penalty_numbers(texts.get(source, ""))
+                                                                           for source in claim.sources))
+                                for claim in claims),
         "retrieval_recall": len(expected & set(retrieved)) / len(expected) if expected else None,
     }
 
@@ -94,6 +132,9 @@ def summarize(rows: list[dict]) -> dict:
     by_kind = {kind: [row for row in refusals if row["expected_refusal"] == kind]
                for kind in sorted({row["expected_refusal"] for row in refusals})}
 
+    def statutes(row):  # which precedents fit depends on each story's wording; the offence should not
+        return {law for law in row["cited_laws"] if not law.startswith("precedent-")}
+
     def rate(values):
         values = list(values)
         return round(mean(values), 3) if values else None
@@ -110,6 +151,8 @@ def summarize(rows: list[dict]) -> dict:
             "retrieval_recall": rate(row["retrieval_recall"] for row in answerable),
             "role_accuracy": rate(row["predicted_role"] == row["role"] for row in known_role),
             "category_accuracy": rate(row["predicted_category"] == row["category"] for row in answerable),
+            "penalty_grounded": rate(row["penalty_grounded"] / row["penalty_claims"]
+                                     for row in answerable if row.get("penalty_claims")),
         },
         "refusals": {
             "items": len(refusals),
@@ -119,7 +162,9 @@ def summarize(rows: list[dict]) -> dict:
                         for kind, members in by_kind.items()},
         },
         "pairs": {"complete": len(complete_pairs),
-                  "same_laws": rate(a["cited_laws"] == b["cited_laws"] for a, b in complete_pairs)},
+                  "same_laws": rate(a["cited_laws"] == b["cited_laws"] for a, b in complete_pairs),
+                  "same_statutes": rate(statutes(a) == statutes(b) for a, b in complete_pairs),
+                  "share_a_statute": rate(bool(statutes(a) & statutes(b)) for a, b in complete_pairs)},
         "seconds": {"mean": rate(row["seconds"] for row in rows if "seconds" in row),
                     "max": max((row["seconds"] for row in rows if "seconds" in row), default=None)},
     }
@@ -138,6 +183,7 @@ def main() -> None:
     items = [item for item in items if args.split == "all" or item["split"] == args.split]
     counter: Counter = Counter()
     report.structured_call = cached(report.structured_call, args.cache, counter)
+    report.embed_texts = cached_embeddings(report.embed_texts, args.cache, counter)
     titles = _title_to_file()
     init_database()
     rows = []
@@ -157,6 +203,7 @@ def main() -> None:
             if counter["model_calls"] > calls_before and settings.ai_provider != "local":
                 time.sleep(args.sleep)
     summary = {**summarize(rows), "model_calls": counter["model_calls"], "cache_hits": counter["cache_hits"],
+               "embedding_calls": counter["embedding_calls"],
                "provider": settings.ai_provider, "model": settings.chat_model, "prompt_version": settings.prompt_version,
                "threshold": settings.gemini_minimum_semantic_score, "retrieval_mode": settings.report_retrieval_mode,
                "dataset": f"{args.dataset.name}:{args.split}"}

@@ -127,15 +127,22 @@ def _validated(draft: ReportDraft, sources: list[Source]) -> Report | None:
     except ValidationError:
         return None
     kinds = {source.id: source.kind for source in sources}
-    # a guide or guideline cited as a law is dropped, not fatal: guide text often reads like the statute it explains
-    laws = [item for item in report.laws if kinds.get(item.source) not in ("guide", "sentencing")]
+    # the model sometimes packs several ids into one string ("S9, S10"); read every id it wrote
+    def split(claims):
+        return [claim.model_copy(update={"sources": [ref for text in claim.sources for ref in re.findall(r"S\d+", text)]})
+                for claim in claims]
+    # a law item keeps the first statute or precedent it names; one citing only a guide or guideline is dropped, not
+    # fatal (guide text often reads like the statute it explains)
+    laws = [item.model_copy(update={"source": first}) for item in report.laws
+            if (first := next((ref for ref in re.findall(r"S\d+", item.source)
+                               if kinds.get(ref) in ("statute", "precedent")), None))]
+    report = report.model_copy(update={"laws": laws, "penalty": split(report.penalty), "actions": split(report.actions)})
     if (not report.summary.strip() or not laws
-            or any(kinds.get(item.source) not in ("statute", "precedent") for item in laws)
             # a penalty sentence with a number must cite; "실제 형은 재판에서 정해집니다" needs no source
             or any(not claim.sources and re.search(r"\d", claim.text) for claim in report.penalty)
             or not report.cited_ids() <= kinds.keys()):
         return None
-    return report.model_copy(update={"laws": laws})
+    return report
 
 
 # --- local provider (CI and key-free development): keyword rules instead of a model ---
@@ -177,6 +184,19 @@ def _write_local(sources: list[Source]) -> ReportDraft:
     )
 
 
+def search(database: Session, query: str, category: str | None, mode=None) -> list[RetrievedChunk]:
+    """Every candidate the report may draw on, before the evidence gate. mode defaults to the configured one."""
+    mode = mode or settings.report_retrieval_mode
+    embedding = embed_texts([mask_sensitive_text(query)], task_type="RETRIEVAL_QUERY")[0] if mode != "keyword" else None
+    candidates: list[RetrievedChunk] = []
+    for kind, top_k in SOURCE_QUOTAS.items():
+        # sentencing ranges and help lines differ by crime, so those kinds are narrowed to the category
+        candidates += retrieve_chunks(database, query, mode=mode, top_k=top_k, document_type=kind,
+                                      category=category if kind in BY_CATEGORY else None,
+                                      query_embedding=embedding).chunks
+    return candidates
+
+
 def build_report(database: Session, story: str, role_override: Role | None = None) -> ReportResponse:
     started = perf_counter()
     masked = mask_story(story)
@@ -207,16 +227,10 @@ def build_report(database: Session, story: str, role_override: Role | None = Non
     retrieval_ms = 0
     if refusal_kind is None and role != "unclear":
         query = " ".join([masked, *(legal for term in reading.terms for legal in term.legal)])
-        mode, retrieval_started = settings.report_retrieval_mode, perf_counter()
-        embedding = (embed_texts([mask_sensitive_text(query)], task_type="RETRIEVAL_QUERY")[0]
-                     if mode != "keyword" else None)
-        for kind, top_k in SOURCE_QUOTAS.items():
-            # sentencing ranges and help lines differ by crime, so those kinds are narrowed to the category
-            candidates += retrieve_chunks(database, query, mode=mode, top_k=top_k, document_type=kind,
-                                          category=category if kind in BY_CATEGORY else None,
-                                          query_embedding=embedding).chunks
+        retrieval_started = perf_counter()
+        candidates = search(database, query, category)
         retrieval_ms = round((perf_counter() - retrieval_started) * 1000)
-        accepted = evidence_chunks(candidates, mode)
+        accepted = evidence_chunks(candidates, settings.report_retrieval_mode)
         # help lines were already chosen by category, so the relevance gate does not apply to them
         chunks = [chunk for chunk in candidates if chunk in accepted or chunk.attributes.get("document_type") == "contact"]
         sources = [_source(index, chunk) for index, chunk in enumerate(chunks, start=1)]
