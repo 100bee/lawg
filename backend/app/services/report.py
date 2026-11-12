@@ -42,8 +42,8 @@ CLASSIFY_INSTRUCTIONS = """아래 사건 설명은 사용자가 겪은 온라인
 WRITE_INSTRUCTIONS = """너는 게임·커뮤니티 이용자를 위한 법령 정보 안내 도구다. 법률 상담이 아니며 개별 사건의 결론을 내리지 않는다.
 제공된 근거 자료(evidence의 S1, S2 …)만 사용해 사건 정리 리포트를 한국어로 쓴다.
 - summary: 사건을 2~3문장으로 중립적으로 요약한다. 욕설 원문은 반복하지 않는다.
-- laws: 근거 자료의 조문 중 이 사건과 관련될 수 있는 것만 고른다. source에 S 번호, plain에 일반인이 이해할 쉬운 풀이 1~2문장. 해당한다고 단정하지 않고 "~될 수 있습니다"로 쓴다.
-- penalty: 고른 조문에 적힌 법정형만 옮기고 sources에 그 조문의 S 번호를 넣는다. 이 사람이 받을 형을 예측하지 않는다. 실제 형은 재판에서 정해진다는 점을 덧붙인다.
+- laws: 근거 자료의 조문(statute)과 판례(precedent) 중 이 사건과 관련될 수 있는 것만 고른다. source에 S 번호, plain에 일반인이 이해할 쉬운 풀이 1~2문장. 해당한다고 단정하지 않고 "~될 수 있습니다"로 쓴다. 판례는 그 판례가 밝힌 판단 기준만 옮기고, 이 사건도 같다고 일반화하지 않는다.
+- penalty: 고른 조문에 적힌 법정형을 옮기고, 근거 자료에 양형기준(sentencing)이 있으면 그 권고 범위도 옮긴다. sources에 해당 S 번호를 넣는다. 이 사람이 받을 형을 예측하지 않는다. 실제 형은 재판에서 정해진다는 점을 덧붙인다.
 - facts_to_check: 결론에 영향을 줄 사실을 질문 형태로 3~5개.
 - actions: role에 맞게 지금 할 수 있는 일 3~5개. 피해자(victim)·주변인(third_party)에게는 증거 보전과 신고를, 행동을 한 사람(offender)에게는 추가 행동 중단, 피해 회복, 변호인 조력을 안내한다. 근거 자료에 있는 내용이면 sources에 S 번호를 넣는다. 근거 자료에 없는 연락처·기관명·숫자는 쓰지 않는다.
 - prepare: 준비할 자료 2~4개.
@@ -103,6 +103,8 @@ def _source(index: int, chunk: RetrievedChunk) -> Source:
         id=f"S{index}", kind=kind, title=chunk.title,
         text=STATUTE_HEADING.sub("", chunk.content) if kind == "statute" else chunk.content,
         effective_date=attributes.get("effective_date") or None,
+        case_number=attributes.get("case_number") or None,
+        decided_on=attributes.get("decided_on") or None,
         url=attributes.get("url") or None,
     )
 

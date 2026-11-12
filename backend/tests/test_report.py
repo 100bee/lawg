@@ -203,3 +203,15 @@ def test_report_rate_limit_is_per_client(monkeypatch):
         app.dependency_overrides.clear()
     assert statuses == [422, 422, 429]  # the forged left-most entry does not give a fresh budget
     assert other.status_code == 422
+
+
+def test_precedent_sources_carry_case_number_and_date(gemini):
+    state, _ = gemini
+    precedent = statute(title="대법원 2020도0000 (예시)", content="판결요지 예시", document_type="precedent")
+    precedent.attributes.update(case_number="2020도0000", decided_on="2020-01-01")
+    state["chunks"] = [statute(), precedent]
+    state["draft"] = draft(laws=[LawItem(source="S1", plain="풀이"), LawItem(source="S2", plain="판례 기준")])
+    result = report.build_report(FakeSession(), "사건")
+
+    assert result.report and result.sources[1].kind == "precedent"
+    assert result.sources[1].case_number == "2020도0000" and result.sources[1].decided_on.isoformat() == "2020-01-01"
