@@ -1,463 +1,381 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import type { Category, Cited, RefusalKind, Report, ReportResponse, Role, Source, SourceKind } from "./report";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-type DocumentItem = {
-  id: string;
-  title: string;
-  source_name: string;
-  document_type: string;
-  service: string;
-  incident_type: string;
-  severity: string;
-  version: string;
-  status: string;
+const CATEGORY: Record<Category, string> = {
+  fraud: "온라인 거래 사기",
+  insult: "모욕",
+  defamation: "명예훼손",
+  obscenity: "통신매체이용음란",
+  account: "계정 도용·해킹",
+  threat: "협박·스토킹",
 };
-
-type Citation = {
-  document_id: string;
-  title: string;
-  source_name: string;
-  chunk_index: number;
-  heading: string;
-  content: string;
-  score: number;
-  vector_score: number;
-  keyword_score: number;
-  keyword_coverage: number;
+const ROLE: Record<Role, { reading: string; stance: string }> = {
+  victim: { reading: "피해를 입은 쪽", stance: "피해를 입은 입장" },
+  offender: { reading: "행동을 한 쪽", stance: "행동을 한 입장" },
+  third_party: { reading: "주변 사람 (가족·친구 등)", stance: "주변 사람의 입장" },
+  unclear: { reading: "아직 모르겠어요", stance: "" },
 };
-
-type ChatResult = {
-  answer: string;
-  grounded: boolean;
-  confidence: string;
-  citations: Citation[];
-  retrieved_chunks: Citation[];
-  trace_id: string;
-  diagnostics: {
-    masked_question: string;
-    inferred_incident_type: string | null;
-    retrieval_ms: number;
-    generation_ms: number;
-    total_ms: number;
-    input_tokens: number;
-    output_tokens: number;
-    provider: string;
-    model: string;
-    prompt_version: string;
-    top_score: number;
-    retrieval_mode: RetrievalMode;
-    evidence_reason: string;
-    candidate_count: number;
-  };
+const CHOOSABLE: Role[] = ["victim", "offender", "third_party"];
+const KIND: Record<SourceKind, string> = { statute: "조문", precedent: "판례", sentencing: "양형기준", guide: "안내" };
+const REFUSAL: Record<RefusalKind, { halt: string; title: string }> = {
+  out_of_scope: { halt: "다루는 사건이 아니에요", title: "이 질문에는 답하지 않아요" },
+  no_evidence: { halt: "관련 조문을 찾지 못했어요", title: "근거를 찾지 못했어요" },
+  individual_conclusion: { halt: "개별 사건의 결론은 답하지 않아요", title: "이 질문에는 답하지 않아요" },
+  evasion: { halt: "처벌을 피하는 방법은 안내하지 않아요", title: "이 질문에는 답하지 않아요" },
+  referral: { halt: "전문 기관의 도움이 먼저 필요해요", title: "전문 기관에 먼저 연락하세요" },
 };
+const ADVICE = "사건마다 사정이 달라서 변호사나 대한법률구조공단(132)의 상담이 필요합니다.";
 
-type RetrievalMode = "vector" | "keyword" | "hybrid";
+const anchor = (id: string) => `source-${id}`;
 
-type EvaluationResult = {
-  retrieval_mode: RetrievalMode;
-  cases: number;
-  recall_at_k: number;
-  mrr: number;
-  refusal_accuracy: number;
-  average_retrieval_ms: number;
-  false_acceptance_rate: number | null;
-  false_refusal_rate: number | null;
-};
-
-type RetrievalComparison = {
-  dataset: string;
-  top_k: number;
-  cases: number;
-  repetitions: number;
-  vector_weight: number;
-  keyword_weight: number;
-  recommended_mode: RetrievalMode;
-  recommendation_policy: string;
-  results: EvaluationResult[];
-  provider: string;
-};
-
-const RETRIEVAL_LABELS: Record<RetrievalMode, string> = {
-  vector: "Vector Only",
-  keyword: "Keyword Only",
-  hybrid: "Hybrid",
-};
-
-const QUICK_QUESTIONS = [
-  "OpenAI API 429 오류가 갑자기 증가했어. 재시도는 어떻게 해야 해?",
-  "임베딩 모델을 바꾼 뒤 기존 문서가 검색되지 않아",
-  "배포 후 질문당 입력 토큰 비용이 두 배가 됐어",
-  "pgvector 검색 p95가 느려지고 CPU가 높아졌어",
-];
-
-async function requestApi<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null);
-    throw new Error(payload?.detail ?? `요청에 실패했습니다. (${response.status})`);
-  }
-  return response.json() as Promise<T>;
-}
-
-function Metric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
-  return (
-    <div className={`metric ${accent ? "metricAccent" : ""}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-export default function Home() {
-  const [documents, setDocuments] = useState<DocumentItem[]>([]);
-  const [question, setQuestion] = useState(QUICK_QUESTIONS[0]);
-  const [chatResult, setChatResult] = useState<ChatResult | null>(null);
-  const [comparison, setComparison] = useState<RetrievalComparison | null>(null);
+export default function Page() {
+  const [story, setStory] = useState("");
+  const [submitted, setSubmitted] = useState(""); // the story the current result belongs to
+  const [result, setResult] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [seeding, setSeeding] = useState(false);
-  const [evaluating, setEvaluating] = useState(false);
-  const [retrievalMode, setRetrievalMode] = useState<RetrievalMode>("hybrid");
-  const [provider, setProvider] = useState("확인 중");
-  const [error, setError] = useState<string | null>(null);
-
-  const loadDocuments = useCallback(async () => {
-    try {
-      const result = await requestApi<DocumentItem[]>("/api/documents");
-      setDocuments(result);
-    } catch {
-      setDocuments([]);
-    }
-  }, []);
+  const [error, setError] = useState("");
+  const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    void loadDocuments();
-    void requestApi<{ provider: string }>("/api/health")
-      .then((health) => setProvider(health.provider))
-      .catch(() => setProvider("연결 안 됨"));
-  }, [loadDocuments]);
+    if (result) resultRef.current?.focus();
+  }, [result]);
 
-  const serviceCount = useMemo(
-    () => new Set(documents.map((document) => document.service)).size,
-    [documents],
-  );
-
-  async function seedDocuments() {
-    setSeeding(true);
-    setError(null);
-    try {
-      const result = await requestApi<{ failed: number }>("/api/documents/seed", { method: "POST" });
-      await loadDocuments();
-      if (result.failed) throw new Error(`${result.failed}개 문서 색인에 실패했습니다. API 키와 요청 한도를 확인해 주세요.`);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "색인에 실패했습니다.");
-    } finally {
-      setSeeding(false);
-    }
-  }
-
-  async function uploadDocument(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    const formData = new FormData();
-    formData.append("file", file);
-    setError(null);
-    try {
-      await requestApi("/api/documents/upload", { method: "POST", body: formData });
-      await loadDocuments();
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "업로드에 실패했습니다.");
-    } finally {
-      event.target.value = "";
-    }
-  }
-
-  async function askQuestion(event?: FormEvent) {
-    event?.preventDefault();
-    if (!question.trim()) return;
+  async function request(text: string, role?: Role) {
     setLoading(true);
-    setError(null);
-    setChatResult(null);
+    setError("");
     try {
-      const result = await requestApi<ChatResult>("/api/chat", {
+      const response = await fetch(`${API_URL}/api/report`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question.trim(), retrieval_mode: retrievalMode }),
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ story: text, role: role ?? null }),
       });
-      setChatResult(result);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "질문 처리에 실패했습니다.");
+      if (!response.ok) throw new Error(`status ${response.status}`);
+      setResult((await response.json()) as ReportResponse);
+      setSubmitted(text);
+    } catch {
+      setError("정리하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function runEvaluation() {
-    setEvaluating(true);
-    setError(null);
+  function onSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (story.trim().length >= 2) void request(story.trim());
+  }
+
+  const changeRole = (role: Role) => void request(submitted, role);
+
+  return (
+    <>
+      <header className="bar">
+        <div className="wrap">
+          <span className="name">Lawg</span>
+          <p>온라인 사건 법령 정보 안내 · 법률 상담이 아닙니다</p>
+        </div>
+      </header>
+
+      <main className="wrap" aria-busy={loading}>
+        <section className="intake">
+          <h1>무슨 일이 있었나요?</h1>
+          <p>평소 말투 그대로 적어 주세요. 이름, 계좌번호, 전화번호는 저장하기 전에 자동으로 가립니다.</p>
+          <form className="box" onSubmit={onSubmit}>
+            <label htmlFor="story" className="srOnly">사건 설명</label>
+            <textarea
+              id="story"
+              value={story}
+              maxLength={2000}
+              placeholder="예: 메이플 메소 사려고 20만원 보냈는데 먹튀 당했어요. 돈 받자마자 차단하고 잠수 탔어요."
+              onChange={(event) => setStory(event.target.value)}
+            />
+            <div className="boxFoot">
+              <span>게임·커뮤니티에서 생긴 사기, 욕설·모욕, 성적 메시지, 계정 도용, 협박을 다룹니다.</span>
+              <button className="btn btnMain" type="submit" disabled={loading || story.trim().length < 2}>
+                {loading ? "정리하는 중…" : "정리하기"}
+              </button>
+            </div>
+          </form>
+          <p className="srOnly" role="status">{loading ? "정리하는 중이에요" : ""}</p>
+          {error && <p className="error" role="alert">{error}</p>}
+        </section>
+
+        {result && (
+          <div ref={resultRef} tabIndex={-1} aria-label="정리 결과">
+            <Reading result={result} />
+            {result.report ? (
+              <Sheet key={result.trace_id} result={result} report={result.report} loading={loading} onRole={changeRole} />
+            ) : result.refusal ? (
+              <article className="refuse">
+                <h2>{REFUSAL[result.refusal.kind].title}</h2>
+                <p>{result.refusal.message}</p>
+                {result.refusal.alternatives.length > 0 && (
+                  <>
+                    <h3>대신 알려드릴 수 있는 것</h3>
+                    <ul>{result.refusal.alternatives.map((item) => <li key={item}>{item}</li>)}</ul>
+                  </>
+                )}
+                {result.refusal.rephrase && (
+                  <>
+                    <h3>이렇게 다시 물어보세요</h3>
+                    <p>&ldquo;{result.refusal.rephrase}&rdquo;</p>
+                  </>
+                )}
+              </article>
+            ) : (
+              <section className="ask">
+                <h2>어느 쪽 입장인가요?</h2>
+                <p>입장에 따라 할 수 있는 일이 달라서 한 번만 여쭤볼게요.</p>
+                <RoleChoice current={result.reading.role} disabled={loading} onRole={changeRole} />
+              </section>
+            )}
+          </div>
+        )}
+      </main>
+
+      <footer className="foot">
+        <div className="wrap">
+          <p>이 서비스는 공개된 법령 정보를 정리해 보여줍니다. 법률 상담이나 법적 판단을 대신하지 않습니다. 급한 위험이 있으면 112에 신고하세요.</p>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+function Reading({ result }: { result: ReportResponse }) {
+  const { reading, report, refusal, sources } = result;
+  const counts = (Object.keys(KIND) as SourceKind[])
+    .map((kind) => [KIND[kind], sources.filter((source) => source.kind === kind).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${label} ${count}`)
+    .join(" · ");
+  return (
+    <section className="read" aria-label="이렇게 읽었어요">
+      <h2>이렇게 읽었어요</h2>
+      <dl>
+        <div><dt>입장</dt><dd>{ROLE[reading.role].reading}</dd></div>
+        {reading.terms.length > 0 && (
+          <div>
+            <dt>쓰신 말 → 법의 말</dt>
+            <dd>
+              {reading.terms.map((term) => (
+                <Fragment key={term.said}>
+                  <span className="term">{term.said}</span>
+                  <span className="arrow" aria-hidden="true">→</span>
+                  {term.legal.map((legal) => <span className="term" key={legal}>{legal}</span>)}
+                </Fragment>
+              ))}
+            </dd>
+          </div>
+        )}
+        <div><dt>찾은 자료</dt><dd>{counts || "없음"}</dd></div>
+        <div>
+          <dt>근거 확인</dt>
+          <dd>
+            {report ? (
+              <><span className="pass">통과</span> 관련 조문을 찾았어요</>
+            ) : refusal ? (
+              <><span className="halt">멈춤</span> {REFUSAL[refusal.kind].halt}</>
+            ) : (
+              <><span className="halt">확인 필요</span> 입장을 골라 주세요</>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
+
+function Sheet({ result, report, loading, onRole }: {
+  result: ReportResponse;
+  report: Report;
+  loading: boolean;
+  onRole: (role: Role) => void;
+}) {
+  const [choosing, setChoosing] = useState(false);
+  const [hit, setHit] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const byId = new Map(result.sources.map((source) => [source.id, source]));
+  const role = result.reading.role;
+
+  function cite(id: string) {
+    setHit(id);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    document.getElementById(anchor(id))?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+  }
+
+  async function copy() {
     try {
-      const result = await requestApi<RetrievalComparison>("/api/evaluations/compare?repetitions=1", { method: "POST" });
-      setComparison(result);
-    } catch (caughtError) {
-      setError(caughtError instanceof Error ? caughtError.message : "평가 실행에 실패했습니다.");
-    } finally {
-      setEvaluating(false);
+      await navigator.clipboard.writeText(reportText(result, report));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopied(false);
     }
   }
 
-  function downloadComparison() {
-    if (!comparison) return;
-    const url = URL.createObjectURL(new Blob([JSON.stringify(comparison, null, 2)], { type: "application/json" }));
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `retrieval-${comparison.provider}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
+  const cites = (ids: string[]) =>
+    ids.map((id) => (
+      <a key={id} className="cite" href={`#${anchor(id)}`} onClick={(event) => { event.preventDefault(); cite(id); }}>
+        {id}
+      </a>
+    ));
 
   return (
-    <main className="appShell">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brandMark">R</div>
-          <div>
-            <strong>Lawg</strong>
-            <span>Incident Copilot</span>
+    <>
+      <article className="sheet">
+        <header className="sheetHead">
+          <h2>사건 정리 리포트</h2>
+          <p className="sheetMeta">
+            {result.reading.category && <span>{CATEGORY[result.reading.category]}</span>}
+            <span>{new Intl.DateTimeFormat("ko-KR", { dateStyle: "long" }).format(new Date(result.created_at))} 작성</span>
+            <span>근거 자료 {result.sources.length}건</span>
+          </p>
+          <div className="stance">
+            <span><b>{ROLE[role].stance}</b>으로 정리했어요.</span>
+            <button className="btn btnText" type="button" aria-expanded={choosing} onClick={() => setChoosing(!choosing)}>
+              입장이 다르면 바꾸기
+            </button>
           </div>
-        </div>
-
-        <div className="environmentCard">
-          <div className="statusLine"><span className="statusDot" /> Demo environment</div>
-          <strong>AI Service Platform</strong>
-          <p>Runbook과 과거 장애를 검색하는 운영 지원 환경</p>
-        </div>
-
-        <section className="sideSection">
-          <div className="sectionHeading">
-            <span>Knowledge base</span>
-            <strong>{documents.length}</strong>
-          </div>
-          <div className="sideStats">
-            <span>{serviceCount} services</span>
-            <span>Markdown</span>
-          </div>
-          <button className="secondaryButton fullWidth" onClick={seedDocuments} disabled={seeding}>
-            {seeding ? "색인 중..." : "샘플 문서 색인"}
-          </button>
-          <label className="uploadButton">
-            운영 문서 업로드
-            <input type="file" accept=".md,.txt" onChange={uploadDocument} />
-          </label>
-        </section>
-
-        <section className="sideSection documentList">
-          <span className="sideLabel">최근 문서</span>
-          {documents.slice(0, 6).map((document) => (
-            <div className="documentRow" key={document.id}>
-              <span className={`severity severity${document.severity}`}>{document.severity}</span>
-              <div>
-                <strong>{document.title}</strong>
-                <span>{document.service}</span>
-              </div>
-            </div>
-          ))}
-          {!documents.length && <p className="emptySide">샘플 문서를 먼저 색인해 주세요.</p>}
-        </section>
-
-        <div className="sidebarFooter">
-          <span>provider</span>
-          <strong>{chatResult?.diagnostics.provider ?? provider}</strong>
-        </div>
-      </aside>
-
-      <section className="workspace">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">AI SERVICE OPERATIONS</span>
-            <h1>장애 대응 Copilot</h1>
-          </div>
-          <button className="evaluationButton" onClick={runEvaluation} disabled={evaluating}>
-            {evaluating ? "비교 실험 중..." : "Retrieval A/B 실험"}
-          </button>
+          {choosing && <RoleChoice current={role} disabled={loading} onRole={onRole} />}
         </header>
 
-        <div className="contentGrid">
-          <section className="mainColumn">
-            <div className="heroCard">
-              <div>
-                <span className="heroBadge">EVIDENCE-FIRST RAG</span>
-                <h2>증상과 로그를 입력하면<br />근거 있는 대응 절차를 찾습니다.</h2>
-                <p>관련 문서와 확인할 절차를 찾고, 근거가 부족하면 추가 정보를 요청합니다.</p>
-                {provider === "local" && <p className="providerNotice">현재는 API 키 없는 문서 발췌 모드입니다.</p>}
-              </div>
-              <div className="heroVisual">
-                <span>01</span><i />
-                <span>Retrieve</span><i />
-                <span>Respond</span>
-              </div>
-            </div>
+        <section className="sec">
+          <h3>상황 요약</h3>
+          <p>{report.summary}</p>
+        </section>
 
-            <div className="quickQuestions">
-              {QUICK_QUESTIONS.map((quickQuestion, index) => (
-                <button key={quickQuestion} onClick={() => setQuestion(quickQuestion)}>
-                  <span>0{index + 1}</span>{quickQuestion}
-                </button>
+        <section className="sec">
+          <h3>관련될 수 있는 조문</h3>
+          {report.laws.map((item) => {
+            const source = byId.get(item.source);
+            if (!source) return null;
+            return (
+              <div className="law" key={item.source}>
+                <div className="lawName">
+                  {source.title}
+                  {source.case_number && <span className="num">{source.case_number}{source.decided_on && ` · ${source.decided_on}`}</span>}
+                  {cites([source.id])}
+                </div>
+                <blockquote>{source.text}</blockquote>
+                <p className="plain"><b>쉬운 말로:</b> {item.plain}</p>
+              </div>
+            );
+          })}
+        </section>
+
+        <CitedSection title="처벌 범위 참고" items={report.penalty} render={(claim) => <p key={claim.text}>{claim.text}{cites(claim.sources)}</p>} />
+
+        {report.facts_to_check.length > 0 && (
+          <section className="sec">
+            <h3>확인이 필요한 사실</h3>
+            <ul className="checks">
+              {report.facts_to_check.map((fact) => (
+                <li key={fact}><label><input type="checkbox" /><span>{fact}</span></label></li>
               ))}
-            </div>
-
-            <form className="questionForm" onSubmit={askQuestion}>
-              <div className="formHeader">
-                <label htmlFor="incident-question">장애 증상 또는 로그</label>
-                <span>API Key와 개인정보는 자동 마스킹</span>
-              </div>
-              <textarea
-                id="incident-question"
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="예: 배포 후 문서 색인은 완료됐지만 검색 결과에 나오지 않습니다..."
-                maxLength={8000}
-              />
-              <div className="formFooter">
-                <label className="retrievalSelect">검색 방식
-                  <select aria-label="검색 방식" value={retrievalMode} onChange={(event) => setRetrievalMode(event.target.value as RetrievalMode)}>
-                    {Object.entries(RETRIEVAL_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </label>
-                <span>{question.length} / 8000</span>
-                <button className="primaryButton" disabled={loading || !question.trim()}>
-                  {loading ? "근거 검색 중..." : "장애 분석"}
-                </button>
-              </div>
-            </form>
-
-            {error && <div className="errorBanner">{error}</div>}
-
-            {loading && (
-              <div className="loadingCard">
-                <div className="loadingPulse" />
-                <div><strong>운영 지식 검색 중</strong><span>{RETRIEVAL_LABELS[retrievalMode]}로 관련 문서를 찾고 있습니다.</span></div>
-              </div>
-            )}
-
-            {chatResult && (
-              <article className="answerCard">
-                <div className="answerHeader">
-                  <div>
-                    <span className={`groundingBadge ${chatResult.grounded ? "grounded" : "ungrounded"}`}>
-                      {chatResult.grounded ? "출처 포함 답변" : "근거 부족"}
-                    </span>
-                    <span className="confidence">{RETRIEVAL_LABELS[chatResult.diagnostics.retrieval_mode]}</span>
-                  </div>
-                  <span className="traceId">trace {chatResult.trace_id.slice(0, 8)}</span>
-                </div>
-                <div className="answerText">{chatResult.answer}</div>
-              </article>
-            )}
+            </ul>
           </section>
+        )}
 
-          <aside className="debugColumn">
-            <section className="debugCard">
-              <div className="cardTitle">
-                <div><span>RAG TRACE</span><h3>실행 디버그</h3></div>
-                <span className="liveBadge">LIVE</span>
-              </div>
-              {chatResult ? (
-                <>
-                  <div className="metricGrid">
-                    <Metric label="Total" value={`${chatResult.diagnostics.total_ms}ms`} accent />
-                    <Metric label="Retrieval" value={`${chatResult.diagnostics.retrieval_ms}ms`} />
-                    <Metric label="Generation" value={`${chatResult.diagnostics.generation_ms}ms`} />
-                    <Metric label="Top score" value={chatResult.diagnostics.top_score.toFixed(3)} />
-                    <Metric label="Input" value={`${chatResult.diagnostics.input_tokens} tok`} />
-                    <Metric label="Output" value={`${chatResult.diagnostics.output_tokens} tok`} />
-                  </div>
-                  <dl className="traceDetails">
-                    <div><dt>Incident type</dt><dd>{chatResult.diagnostics.inferred_incident_type ?? "UNKNOWN"}</dd></div>
-                    <div><dt>Provider</dt><dd>{chatResult.diagnostics.provider}</dd></div>
-                    <div><dt>Model</dt><dd>{chatResult.diagnostics.model}</dd></div>
-                    <div><dt>Prompt</dt><dd>{chatResult.diagnostics.prompt_version}</dd></div>
-                    <div><dt>Evidence</dt><dd>{chatResult.diagnostics.evidence_reason}</dd></div>
-                    <div><dt>검색 후보</dt><dd>{chatResult.diagnostics.candidate_count}개</dd></div>
-                  </dl>
-                </>
-              ) : (
-                <div className="debugEmpty">
-                  <div className="radar"><i /><i /><i /></div>
-                  <strong>Trace 대기 중</strong>
-                  <span>질문을 실행하면 검색 점수와 지연시간이 표시됩니다.</span>
-                </div>
-              )}
-            </section>
+        {report.actions.length > 0 && (
+          <section className="sec">
+            <h3>지금 할 수 있는 일</h3>
+            <ul className="steps">
+              {report.actions.map((claim) => <li key={claim.text}>{claim.text}{cites(claim.sources)}</li>)}
+            </ul>
+          </section>
+        )}
 
-            <section className="sourcesCard">
-              <div className="cardTitle">
-                <div><span>RETRIEVAL</span><h3>검색 근거</h3></div>
-                <strong>{chatResult?.citations.length ?? 0}</strong>
-              </div>
-              <div className="sourceList">
-                {chatResult?.citations.map((citation, index) => (
-                  <details className="sourceItem" key={`${citation.document_id}-${citation.chunk_index}`} open={index === 0}>
-                    <summary>
-                      <span className="sourceIndex">S{index + 1}</span>
-                      <div><strong>{citation.title}</strong><span>{citation.heading}</span></div>
-                      <em>{citation.score.toFixed(3)}</em>
-                    </summary>
-                    <div className="scoreBreakdown">
-                      <span>vector {citation.vector_score.toFixed(3)}</span>
-                      <span>keyword {citation.keyword_score.toFixed(3)}</span>
-                      <span>coverage {(citation.keyword_coverage * 100).toFixed(0)}%</span>
-                    </div>
-                    <p>{citation.content}</p>
-                  </details>
-                ))}
-                {!chatResult && <p className="emptySources">답변에 사용된 청크가 여기에 표시됩니다.</p>}
-              </div>
-              {chatResult && <details className="retrievalCandidates">
-                <summary>전체 검색 후보 {chatResult.retrieved_chunks.length}개 보기</summary>
-                {chatResult.retrieved_chunks.map((chunk, index) => <p key={`${chunk.document_id}-${chunk.chunk_index}`}>
-                  {index + 1}. {chunk.title}<br />
-                  점수 {chunk.score.toFixed(3)} · 단어 일치 {(chunk.keyword_coverage * 100).toFixed(0)}%
-                </p>)}
-              </details>}
-            </section>
+        {report.prepare.length > 0 && (
+          <section className="sec">
+            <h3>준비할 것</h3>
+            <ul>{report.prepare.map((item) => <li key={item}>{item}</li>)}</ul>
+          </section>
+        )}
 
-            {comparison && (
-              <section className="evaluationCard">
-                <div className="cardTitle">
-                  <div><span>RETRIEVAL EXPERIMENT</span><h3>Golden Set 비교</h3></div>
-                  <strong>{comparison.cases} × {comparison.repetitions}</strong>
-                </div>
-                <div className="experimentModes">
-                  {comparison.results.map((result) => {
-                    const recommended = result.retrieval_mode === comparison.recommended_mode;
-                    return (
-                      <div className={`experimentMode ${recommended ? "recommendedMode" : ""}`} key={result.retrieval_mode}>
-                        <div className="modeHeading">
-                          <strong>{RETRIEVAL_LABELS[result.retrieval_mode]}</strong>
-                          {recommended && <span>RECOMMENDED</span>}
-                        </div>
-                        <div className="modeMetrics">
-                          <div><span>Recall@{comparison.top_k}</span><strong>{(result.recall_at_k * 100).toFixed(1)}%</strong></div>
-                          <div><span>MRR</span><strong>{result.mrr.toFixed(3)}</strong></div>
-                          <div><span>Refusal</span><strong>{(result.refusal_accuracy * 100).toFixed(1)}%</strong></div>
-                          <div><span>Latency</span><strong>{result.average_retrieval_ms.toFixed(1)}ms</strong></div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <p className="recommendationNote">검색과 답변 허용 판정의 비교입니다. 생성 답변의 사실 정확도는 별도로 확인해야 합니다.</p>
-                <p className="recommendationNote">
-                  선택 기준 · {comparison.recommendation_policy}
-                </p>
-                <button className="secondaryButton fullWidth" onClick={downloadComparison}>실험 결과 JSON 저장</button>
-              </section>
-            )}
-          </aside>
-        </div>
-      </section>
-    </main>
+        <section className="cannot">
+          <h3>이 리포트가 답하지 못하는 것</h3>
+          {report.cannot_answer.length > 0 && <ul>{report.cannot_answer.map((item) => <li key={item}>{item}</li>)}</ul>}
+          <p style={{ margin: "var(--space-sm) 0 0" }}>{ADVICE}</p>
+        </section>
+
+        <section className="sources">
+          <h3>근거 자료</h3>
+          <ol>
+            {result.sources.map((source) => (
+              <li key={source.id} id={anchor(source.id)} className={hit === source.id ? "isHit" : undefined}>
+                <span className="id">{source.id}</span>
+                <span>{source.url ? <a href={source.url} target="_blank" rel="noreferrer">{source.title}</a> : source.title}</span>
+                <span className="num">{KIND[source.kind]}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      </article>
+
+      <div className="actions">
+        <button className="btn" type="button" onClick={() => window.print()}>인쇄 · PDF 저장</button>
+        <button className="btn" type="button" onClick={copy}>{copied ? "복사했어요" : "내용 복사"}</button>
+      </div>
+    </>
   );
+}
+
+function CitedSection({ title, items, render }: { title: string; items: Cited[]; render: (claim: Cited) => ReactNode }) {
+  if (items.length === 0) return null;
+  return (
+    <section className="sec">
+      <h3>{title}</h3>
+      {items.map(render)}
+    </section>
+  );
+}
+
+function RoleChoice({ current, disabled, onRole }: { current: Role; disabled: boolean; onRole: (role: Role) => void }) {
+  return (
+    <div className="roles" role="group" aria-label="입장 고르기">
+      {CHOOSABLE.map((role) => (
+        <button
+          key={role}
+          className="btn"
+          type="button"
+          aria-pressed={current === role}
+          disabled={disabled || current === role}
+          onClick={() => onRole(role)}
+        >
+          {ROLE[role].reading}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function reportText(result: ReportResponse, report: Report): string {
+  const byId = new Map<string, Source>(result.sources.map((source) => [source.id, source]));
+  const cites = (ids: string[]) => (ids.length ? ` [${ids.join(", ")}]` : "");
+  const list = (title: string, items: string[]) => (items.length ? [`\n${title}`, ...items.map((item) => `- ${item}`)] : []);
+  return [
+    "사건 정리 리포트 (Lawg)",
+    result.reading.category ? CATEGORY[result.reading.category] : "",
+    `${ROLE[result.reading.role].stance}으로 정리`,
+    "\n상황 요약",
+    report.summary,
+    "\n관련될 수 있는 조문",
+    ...report.laws.flatMap((item) => {
+      const source = byId.get(item.source);
+      return source ? [`- ${source.title} [${source.id}]`, `  ${source.text}`, `  쉬운 말로: ${item.plain}`] : [];
+    }),
+    ...list("처벌 범위 참고", report.penalty.map((claim) => claim.text + cites(claim.sources))),
+    ...list("확인이 필요한 사실", report.facts_to_check),
+    ...list("지금 할 수 있는 일", report.actions.map((claim) => claim.text + cites(claim.sources))),
+    ...list("준비할 것", report.prepare),
+    ...list("이 리포트가 답하지 못하는 것", report.cannot_answer),
+    ADVICE,
+    "\n근거 자료",
+    ...result.sources.map((source) => `${source.id} ${source.title} (${KIND[source.kind]})${source.url ? ` ${source.url}` : ""}`),
+    "\n법률 상담이 아니라 공개된 법령 정보를 정리한 것입니다.",
+  ].filter((line) => line !== "").join("\n");
 }

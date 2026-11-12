@@ -1,4 +1,6 @@
+import json
 import uuid
+from pathlib import Path
 from time import perf_counter
 from typing import Literal
 
@@ -18,6 +20,8 @@ from app.schemas import (
     DocumentResponse,
     EvaluationResponse,
     HealthResponse,
+    ReportRequest,
+    ReportResponse,
     RetrievalComparisonResponse,
     SeedResponse,
 )
@@ -30,6 +34,22 @@ from app.services.retrieval import retrieve_chunks
 
 
 router = APIRouter()
+EXAMPLES = Path(__file__).resolve().parents[2] / "data" / "examples"
+
+
+@router.post("/report", response_model=ReportResponse)
+def report(request: ReportRequest) -> ReportResponse:
+    # shortcut: serves the mockup examples so the screen can be built; step 3 replaces this with the real pipeline
+    if any(word in request.story for word in ("지우", "안 걸리", "없애")):
+        name = "refused"
+    elif request.role == "offender" or (not request.role and any(w in request.story for w in ("판다고", "팔고", "받고 차단"))):
+        name = "offender"
+    else:
+        name = "victim"
+    body = json.loads((EXAMPLES / f"{name}.json").read_text(encoding="utf-8"))
+    if request.role and name != "refused":
+        body["reading"]["role"] = request.role
+    return ReportResponse.model_validate(body)
 
 
 @router.get("/health", response_model=HealthResponse)
