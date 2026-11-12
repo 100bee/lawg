@@ -166,6 +166,9 @@ h1, h2, h3 { font-style: normal; color: var(--color-ink); margin: 0; }
 
 /* App states the mockup did not draw */
 .boxFoot output { min-height: 1em; }
+.status { margin: var(--space-sm) 0 0; min-height: 1.75em; color: var(--color-muted); font-size: var(--text-sm); }
+.status:empty { min-height: 0; margin: 0; }
+.foot p + p { margin-top: var(--space-2xs); }
 .error { margin: var(--space-sm) 0 0; color: var(--color-stop); font-size: var(--text-sm); }
 .roles { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin-top: var(--space-xs); }
 .roles .btn[aria-pressed="true"] { background: var(--color-ink); border-color: var(--color-ink); color: var(--color-paper); }

@@ -26,6 +26,15 @@ class ContentBlocked(RuntimeError):
     """The provider refused the input or output on safety grounds."""
 
 
+class ProviderBusy(RuntimeError):
+    """Overload or quota. Temporary, and the message is written for site visitors."""
+
+
+BUSY_MESSAGE = "AI 서버가 바빠서 응답하지 못했어요. 잠시 뒤 다시 시도해 주세요."
+RATE_MESSAGE = "요청이 몰려서 처리하지 못했어요. 1분쯤 뒤에 다시 시도해 주세요."
+DAILY_MESSAGE = "오늘 쓸 수 있는 AI 사용량을 모두 썼어요. 내일 다시 시도해 주세요."
+
+
 def embedding_fingerprint() -> str:
     model = settings.openai_embedding_model if settings.ai_provider == "openai" else "feature-hashing-v1"
     if settings.ai_provider == "gemini":
@@ -42,6 +51,7 @@ def _gemini_request(model: str, method: str, payload: dict, *, fallback_model: s
         raise RuntimeError("AI_PROVIDER=gemini 사용 시 .env에 GEMINI_API_KEY를 입력해 주세요.")
     attempts = [model, model] + ([fallback_model] if fallback_model and fallback_model != model else [])
     last_status: int | str = ""
+    daily_quota = False
     for attempt, current in enumerate(attempts):
         if attempt:
             time.sleep(settings.gemini_retry_delay_seconds * attempt)
@@ -60,6 +70,8 @@ def _gemini_request(model: str, method: str, payload: dict, *, fallback_model: s
             raise RuntimeError("Gemini API 호출에 실패했습니다. 키, 모델 이름과 제공자 상태를 확인해 주세요.") from error
         if response.status_code in RETRYABLE_STATUS:
             last_status = response.status_code
+            # Free-tier 429 bodies name the exhausted quota, e.g. GenerateRequestsPerDayPerProjectPerModel.
+            daily_quota = daily_quota or (last_status == 429 and "PerDay" in response.text)
             continue
         if response.is_error:
             raise RuntimeError("Gemini API 호출에 실패했습니다. 키, 모델 이름과 제공자 상태를 확인해 주세요.")
@@ -68,8 +80,8 @@ def _gemini_request(model: str, method: str, payload: dict, *, fallback_model: s
         except ValueError as error:
             raise RuntimeError("Gemini API 응답을 해석하지 못했습니다.") from error
     if last_status == 429:
-        raise RuntimeError("Gemini 요청 한도에 도달했습니다. AI Studio에서 한도와 초기화 시각을 확인해 주세요.")
-    raise RuntimeError("Gemini가 지금 응답하지 않습니다(과부하). 잠시 뒤 다시 시도해 주세요.")
+        raise ProviderBusy(DAILY_MESSAGE if daily_quota else RATE_MESSAGE)
+    raise ProviderBusy(BUSY_MESSAGE)
 
 
 def _openai_client() -> OpenAI:

@@ -9,7 +9,7 @@ from app.database import get_db
 from app.main import app
 from app.schemas import Cited, LawItem, Term
 from app.services import report
-from app.services.ai import ContentBlocked
+from app.services.ai import ContentBlocked, ProviderBusy
 from app.services.retrieval import RetrievalResult, RetrievedChunk
 
 
@@ -149,16 +149,21 @@ def test_trace_stores_only_the_masked_story(gemini):
     assert trace.input_tokens == 110 and trace.output_tokens == 55
 
 
-def test_blocked_content_returns_422(monkeypatch):
-    def blocked(*args, **kwargs):
-        raise ContentBlocked("차단")
-    monkeypatch.setattr("app.api.routes.build_report", blocked)
+@pytest.mark.parametrize(("error", "status"), [
+    (ContentBlocked("차단"), 422),  # visitor can rephrase
+    (ProviderBusy("바빠요"), 503),  # visitor can retry later
+    (RuntimeError("GEMINI_API_KEY 없음"), 502),  # operator problem; the page shows a generic message
+])
+def test_report_errors_map_to_status_codes(monkeypatch, error, status):
+    def fail(*args, **kwargs):
+        raise error
+    monkeypatch.setattr("app.api.routes.build_report", fail)
     app.dependency_overrides[get_db] = lambda: None
     try:
         response = TestClient(app).post("/api/report", json={"story": "욕설이 든 사건"})
     finally:
         app.dependency_overrides.clear()
-    assert response.status_code == 422 and response.json()["detail"] == "차단"
+    assert response.status_code == status and response.json()["detail"] == str(error)
 
 
 def test_local_classifier_reads_role_category_and_requests() -> None:

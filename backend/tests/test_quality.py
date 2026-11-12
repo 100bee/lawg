@@ -100,10 +100,20 @@ def test_gemini_rate_limit_retries_once_then_reports_without_secret(monkeypatch)
         calls.append(url)
         return httpx.Response(429, json={"error": "fake-secret"}, request=httpx.Request("POST", url))
     monkeypatch.setattr(ai.httpx, "post", post)
-    with pytest.raises(RuntimeError, match="요청 한도") as error:
+    with pytest.raises(ai.ProviderBusy, match="1분쯤") as error:
         ai._gemini_request("test-model", "generateContent", {})
     assert "fake-secret" not in str(error.value)
     assert len(calls) == 2
+
+
+def test_gemini_daily_quota_says_come_back_tomorrow(monkeypatch):
+    monkeypatch.setattr(settings, "gemini_api_key", "fake-secret")
+    monkeypatch.setattr(settings, "gemini_retry_delay_seconds", 0)
+    body = {"error": {"details": [{"violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}]}}
+    monkeypatch.setattr(ai.httpx, "post", lambda url, **kwargs: httpx.Response(
+        429, json=body, request=httpx.Request("POST", url)))
+    with pytest.raises(ai.ProviderBusy, match="내일"):
+        ai._gemini_request("model", "embedContent", {})
 
 
 def test_gemini_overload_falls_back_to_the_other_model(monkeypatch):
