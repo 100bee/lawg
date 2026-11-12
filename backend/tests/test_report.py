@@ -156,6 +156,11 @@ def test_a_guide_cited_as_a_law_is_dropped_not_fatal(gemini):
 
     assert [item.source for item in result.report.laws] == ["S1"]
 
+    state["draft"] = draft(laws=[LawItem(source="S2, S1", plain="두 출처를 한 칸에")],  # seen on dev: "S9, S10"
+                           actions=[Cited(text="신고합니다.", sources=["S1, S2"])])
+    packed = report.build_report(FakeSession(), "사건").report
+    assert [item.source for item in packed.laws] == ["S1"] and packed.actions[0].sources == ["S1", "S2"]
+
     state["draft"] = draft(laws=[LawItem(source="S2", plain="해설만")])
     assert report.build_report(FakeSession(), "사건").refusal.kind == "no_evidence"
 

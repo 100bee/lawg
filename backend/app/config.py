@@ -33,14 +33,17 @@ class Settings(BaseSettings):
     minimum_grounding_score: float = 0.08
     minimum_semantic_score: float = Field(default=0.35, ge=0, le=1)
     # Gemini cosine scores sit near 0.55 even for off-domain questions, so 0.35 accepts everything.
-    # shortcut: 0.58 = midpoint of the provisional Lawg dev-split gap (refusals <= 0.568, answerable >= 0.591,
-    # 2026-11-12, 8 dev cases); recalibrate on the step 7 eval set. Challenge cases are held out.
+    # 0.58: on the step 7 dev draft (64 answerable stories, 148 sources) every story keeps a statute up to 0.58 and
+    # 2 lose it at 0.60. No threshold separates the 3 "no statute" stories (1 still passes at 0.64, where 7 answerable
+    # ones are already refused), so that refusal is left to the writer (answerable=false). `python -m app.experiments`.
     gemini_minimum_semantic_score: float = Field(default=0.58, ge=0, le=1)
     minimum_keyword_coverage: float = Field(default=0.20, ge=0, le=1)
     minimum_keyword_matches: int = Field(default=2, ge=1)
     openai_timeout_seconds: float = Field(default=45, gt=0)
     prompt_version: str = "lawg-v1"
-    report_retrieval_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
+    # vector: dev draft evidence recall 0.951 vs hybrid 0.932 vs keyword 0.016; keyword tokens rarely match colloquial
+    # Korean and in hybrid they lifted unrelated procedural articles. `python -m app.experiments`, 2026-11-12.
+    report_retrieval_mode: Literal["vector", "keyword", "hybrid"] = "vector"
     # Set ADMIN_TOKEN on any public deployment: seed/upload/traces/evaluations then need X-Admin-Token.
     admin_token: str | None = None
     report_rate_limit: int = Field(default=10, ge=1)  # reports per client per window
