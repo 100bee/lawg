@@ -28,6 +28,7 @@ const REFUSAL: Record<RefusalKind, { halt: string; title: string }> = {
   evasion: { halt: "처벌을 피하는 방법은 안내하지 않아요", title: "이 질문에는 답하지 않아요" },
   referral: { halt: "전문 기관의 도움이 먼저 필요해요", title: "전문 기관에 먼저 연락하세요" },
 };
+const GENERIC_ERROR = "정리하지 못했어요. 잠시 뒤 다시 시도해 주세요.";
 const ADVICE = "사건마다 사정이 달라서 변호사나 대한법률구조공단(132)의 상담이 필요합니다.";
 
 const anchor = (id: string) => `source-${id}`;
@@ -53,11 +54,16 @@ export default function Page() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ story: text, role: role ?? null }),
       });
-      if (!response.ok) throw new Error(`status ${response.status}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        // 422 (the model blocked the text) and 503 (overload, quota) carry a message written for users
+        setError([422, 503].includes(response.status) && typeof body?.detail === "string" ? body.detail : GENERIC_ERROR);
+        return;
+      }
       setResult((await response.json()) as ReportResponse);
       setSubmitted(text);
     } catch {
-      setError("정리하지 못했어요. 잠시 뒤 다시 시도해 주세요.");
+      setError(GENERIC_ERROR);
     } finally {
       setLoading(false);
     }

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 from time import perf_counter
 from typing import Literal
@@ -46,6 +46,7 @@ class RetrievedChunk:
     keyword_score: float
     keyword_coverage: float = 0.0
     keyword_matches: int = 0
+    attributes: dict = field(default_factory=dict)  # front matter: document_type, url, effective_date, ...
 
 
 @dataclass(slots=True)
@@ -200,6 +201,7 @@ def retrieve_chunks(
                 keyword_score=keyword_score,
                 keyword_coverage=coverage,
                 keyword_matches=matches,
+                attributes=dict(chunk.attributes or {}),
             )
         )
 

@@ -61,19 +61,20 @@ def test_upload_sanitizes_before_embedding_and_deduplicates(client, database, mo
     assert len(captured) == 1
 
 
-def test_chat_modes_and_trace_never_store_original_secrets(client, database):
-    ingest_markdown_text(database, "test-chat.md", "# API 429\nAPI 429 재시도 횟수를 제한한다. 지수 백오프를 적용한다.")
-    for mode in ("vector", "keyword", "hybrid"):
-        response = client.post("/api/chat", json={"question": "API 429 재시도 user@example.com", "retrieval_mode": mode})
-        assert response.status_code == 200
-        payload = response.json()
-        assert payload["grounded"]
-        assert payload["diagnostics"]["retrieval_mode"] == mode
-        assert "user@example.com" not in response.text
-        trace = client.get(f"/api/traces/{payload['trace_id']}")
-        assert "user@example.com" not in trace.text
-    assert all("user@example.com" not in row.question for row in database.scalars(select(RetrievalTrace)))
-    assert client.post("/api/chat", json={"question": "API 제공자의 주식 배당 기준일을 알려줘"}).json()["grounded"] is False
+def test_report_end_to_end_in_local_mode_keeps_personal_data_out(client, database):
+    ingest_markdown_text(database, "test-347.md", (
+        "---\ntitle: 형법 제347조 (사기)\ndocument_type: statute\neffective_date: 2026-10-02\n---\n"
+        "제347조(사기) 게임 아이템 거래에서 돈을 보냈는데 먹튀 당했어요 같은 사기 사건에 쓰이는 조문 예시"))
+    response = client.post("/api/report", json={"story": "게임 아이템 거래에서 돈을 보냈는데 먹튀 당했어요 010-1234-5678"})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["report"] and payload["reading"]["category"] == "fraud"
+    assert payload["sources"][0]["title"] == "형법 제347조 (사기)"
+    assert "010-1234-5678" not in response.text
+    trace = client.get(f"/api/traces/{payload['trace_id']}")
+    assert trace.status_code == 200 and "010-1234-5678" not in trace.text
+    assert all("010-1234-5678" not in row.question for row in database.scalars(select(RetrievalTrace)))
+    assert client.post("/api/report", json={"story": "이혼 절차 알려줘"}).json()["refusal"]["kind"] == "out_of_scope"
 
 
 def test_model_mismatch_requires_reindex_without_deleting_documents(database, monkeypatch):
