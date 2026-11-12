@@ -1,7 +1,11 @@
+import secrets
+import threading
+import time
 import uuid
+from collections import defaultdict, deque
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
@@ -28,7 +32,32 @@ from app.services.report import build_report
 router = APIRouter()
 
 
-@router.post("/report", response_model=ReportResponse)
+def require_admin(x_admin_token: str | None = Header(default=None)) -> None:
+    if settings.admin_token and not secrets.compare_digest(x_admin_token or "", settings.admin_token):
+        raise HTTPException(status_code=401, detail="관리자 토큰이 필요합니다.")
+
+
+# shortcut: per-process memory, reset on restart; move to Redis if the API ever runs more than one instance.
+_report_times: dict[str, deque[float]] = defaultdict(deque)
+_report_lock = threading.Lock()
+
+
+def limit_reports(request: Request) -> None:
+    # The right-most X-Forwarded-For entry is added by the hosting proxy; earlier ones can be forged by the client.
+    forwarded = request.headers.get("x-forwarded-for", "")
+    client = forwarded.split(",")[-1].strip() or (request.client.host if request.client else "unknown")
+    now = time.monotonic()
+    with _report_lock:
+        times = _report_times[client]
+        while times and now - times[0] > settings.report_rate_window_seconds:
+            times.popleft()
+        if len(times) >= settings.report_rate_limit:
+            raise HTTPException(status_code=429, detail=(
+                f"짧은 시간에 너무 많이 요청했어요. {settings.report_rate_window_seconds // 60}분쯤 뒤에 다시 시도해 주세요."))
+        times.append(now)
+
+
+@router.post("/report", response_model=ReportResponse, dependencies=[Depends(limit_reports)])
 def report(request: ReportRequest, database: Session = Depends(get_db)) -> ReportResponse:
     try:
         return build_report(database, request.story, request.role)
@@ -56,7 +85,7 @@ def list_documents(database: Session = Depends(get_db)) -> list[DocumentResponse
     )) for document in documents]
 
 
-@router.post("/documents/seed", response_model=SeedResponse)
+@router.post("/documents/seed", response_model=SeedResponse, dependencies=[Depends(require_admin)])
 def seed_documents(database: Session = Depends(get_db)) -> SeedResponse:
     documents, indexed, skipped, failed = ingest_sample_documents(database)
     return SeedResponse(
@@ -67,7 +96,7 @@ def seed_documents(database: Session = Depends(get_db)) -> SeedResponse:
     )
 
 
-@router.post("/documents/upload", response_model=DocumentResponse)
+@router.post("/documents/upload", response_model=DocumentResponse, dependencies=[Depends(require_admin)])
 async def upload_document(
     file: UploadFile = File(...),
     database: Session = Depends(get_db),
@@ -93,7 +122,7 @@ async def upload_document(
     return DocumentResponse.model_validate(document)
 
 
-@router.get("/traces/{trace_id}")
+@router.get("/traces/{trace_id}", dependencies=[Depends(require_admin)])
 def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
     trace = database.get(RetrievalTrace, trace_id)
     if not trace:
@@ -118,7 +147,7 @@ def get_trace(trace_id: uuid.UUID, database: Session = Depends(get_db)) -> dict:
     })
 
 
-@router.post("/evaluations/run", response_model=EvaluationResponse)
+@router.post("/evaluations/run", response_model=EvaluationResponse, dependencies=[Depends(require_admin)])
 def evaluate(database: Session = Depends(get_db)) -> EvaluationResponse:
     document_count = database.scalar(select(func.count()).select_from(Document))
     if not document_count:
@@ -131,7 +160,8 @@ def evaluate(database: Session = Depends(get_db)) -> EvaluationResponse:
         raise HTTPException(status_code=503, detail=str(error)) from error
 
 
-@router.post("/evaluations/compare", response_model=RetrievalComparisonResponse)
+@router.post("/evaluations/compare", response_model=RetrievalComparisonResponse,
+             dependencies=[Depends(require_admin)])
 def compare_retrieval(
     repetitions: int = Query(default=3, ge=1, le=10),
     split: Literal["all", "dev", "challenge"] = "all",

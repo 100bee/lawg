@@ -101,3 +101,10 @@ def test_statutes_and_guides_are_one_chunk_each() -> None:
     body = "제2조(정의) " + "가. 상대방에게 접근하는 행위\n" * 200
     chunks = split_document(body, {"document_type": "statute", "title": "스토킹처벌법 제2조 (정의)"})
     assert len(chunks) == 1 and chunks[0].heading == "스토킹처벌법 제2조 (정의)"
+
+
+def test_database_url_accepts_host_style_postgres_urls() -> None:
+    from app.config import Settings
+    neon = Settings(database_url="postgresql://u:p@host/db?sslmode=require").database_url
+    assert neon == "postgresql+psycopg://u:p@host/db?sslmode=require"
+    assert Settings(database_url="postgres://u:p@host/db").database_url == "postgresql+psycopg://u:p@host/db"
