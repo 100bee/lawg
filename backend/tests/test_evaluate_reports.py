@@ -36,5 +36,5 @@ def test_scores_citations_roles_refusals_and_pairs():
     assert summary["answerable"]["role_accuracy"] == 0.5  # the offender was read as a victim
     assert summary["refusals"]["refused_any_way"] == 1.0
     assert summary["refusals"]["by_kind"]["referral"]["right_kind"] == 0.0
-    assert summary["pairs"] == {"complete": 1, "same_citations": 0.0}
+    assert summary["pairs"] == {"complete": 1, "same_laws": 0.0}
     assert summary["errors"] == {"ProviderBusy": 1} and summary["seconds"]["max"] == 5.0

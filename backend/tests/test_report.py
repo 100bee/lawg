@@ -113,7 +113,7 @@ def test_no_statute_evidence_refuses_without_writing(gemini):
 @pytest.mark.parametrize("bad", [
     {"answerable": False},
     {"laws": [LawItem(source="S9", plain="없는 출처")]},
-    {"penalty": [Cited(text="출처 없는 처벌 범위", sources=[])]},
+    {"penalty": [Cited(text="출처 없이 1년 이하 징역", sources=[])]},
     {"laws": []},
 ])
 def test_model_refusal_or_bad_citation_becomes_no_evidence(gemini, bad):
@@ -215,3 +215,10 @@ def test_precedent_sources_carry_case_number_and_date(gemini):
 
     assert result.report and result.sources[1].kind == "precedent"
     assert result.sources[1].case_number == "2020도0000" and result.sources[1].decided_on.isoformat() == "2020-01-01"
+
+
+def test_uncited_penalty_note_without_numbers_is_fine(gemini):
+    state, _ = gemini
+    state["draft"] = draft(penalty=[Cited(text="법정형은 조문에 적혀 있습니다 1년", sources=["S1"]),
+                                    Cited(text="실제 형은 재판에서 정해집니다.", sources=[])])
+    assert report.build_report(FakeSession(), "사건").report is not None

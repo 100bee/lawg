@@ -60,7 +60,9 @@ def score(item: dict, response, titles: dict[str, str]) -> dict:
     if isinstance(response, str):
         return {**row, "error": response}
     by_id = {source.id: titles.get(source.title, source.title) for source in response.sources}
-    cited = sorted({by_id[law.source] for law in response.report.laws}) if response.report else []
+    # every section counts: guides are cited from actions, not laws
+    cited = sorted({by_id[source] for source in response.report.cited_ids()}) if response.report else []
+    laws = sorted({by_id[law.source] for law in response.report.laws}) if response.report else []
     expected = set(item["expected_documents"])
     predicted_refusal = response.refusal.kind if response.refusal else ("ask_role" if not response.report else None)
     return {
@@ -69,6 +71,7 @@ def score(item: dict, response, titles: dict[str, str]) -> dict:
         "predicted_category": response.reading.category or "out_of_scope",
         "predicted_refusal": predicted_refusal,
         "cited": cited,
+        "cited_laws": laws,
         "retrieved": sorted(set(by_id.values())),
         "citation_recall": len(expected & set(cited)) / len(expected) if expected else None,
         "retrieval_recall": len(expected & set(by_id.values())) / len(expected) if expected else None,
@@ -97,7 +100,9 @@ def summarize(rows: list[dict]) -> dict:
         "errors": Counter(row["error"] for row in rows if "error" in row),
         "answerable": {
             "items": len(answerable),
-            "report_rate": rate(row["predicted_refusal"] is None for row in answerable),
+            # an unclear-role story should get the role question, not a report
+            "report_rate": rate(row["predicted_refusal"] == ("ask_role" if row["role"] == "unclear" else None)
+                                for row in answerable),
             "citation_recall": rate(row["citation_recall"] for row in answerable),
             "retrieval_recall": rate(row["retrieval_recall"] for row in answerable),
             "role_accuracy": rate(row["predicted_role"] == row["role"] for row in known_role),
@@ -111,7 +116,7 @@ def summarize(rows: list[dict]) -> dict:
                         for kind, members in by_kind.items()},
         },
         "pairs": {"complete": len(complete_pairs),
-                  "same_citations": rate(a["cited"] == b["cited"] for a, b in complete_pairs)},
+                  "same_laws": rate(a["cited_laws"] == b["cited_laws"] for a, b in complete_pairs)},
         "seconds": {"mean": rate(row["seconds"] for row in rows if "seconds" in row),
                     "max": max((row["seconds"] for row in rows if "seconds" in row), default=None)},
     }
