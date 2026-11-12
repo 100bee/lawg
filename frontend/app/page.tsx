@@ -51,6 +51,11 @@ export default function Page() {
   const resultRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Wake the free-tier API and database while the visitor is still typing (a cold start takes about a minute).
+    fetch(`${API_URL}/api/health`).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     if (result) resultRef.current?.focus();
   }, [result]);
 
@@ -75,8 +80,8 @@ export default function Page() {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => null);
-        // 422 (the model blocked the text) and 503 (overload, quota) carry a message written for users
-        setError([422, 503].includes(response.status) && typeof body?.detail === "string" ? body.detail : GENERIC_ERROR);
+        // 422 (the model blocked the text), 429 (too many reports) and 503 (overload, quota) carry a message for users
+        setError([422, 429, 503].includes(response.status) && typeof body?.detail === "string" ? body.detail : GENERIC_ERROR);
         return;
       }
       setResult((await response.json()) as ReportResponse);

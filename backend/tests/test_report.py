@@ -172,3 +172,34 @@ def test_local_classifier_reads_role_category_and_requests() -> None:
     assert report._classify_local("게임에서 욕했는데 고소당했어요").role == "offender"
     assert report._classify_local("대화 내역 지우면 안 걸리나요").request == "evasion"
     assert report._classify_local("이혼 절차 알려줘").category == "out_of_scope"
+
+
+def test_admin_endpoints_need_the_token_when_one_is_set(monkeypatch):
+    monkeypatch.setattr(settings, "admin_token", "s3cret")
+    app.dependency_overrides[get_db] = lambda: None
+    client = TestClient(app)
+    try:
+        for method, path in [("post", "/api/documents/seed"), ("post", "/api/evaluations/run"),
+                             ("post", "/api/evaluations/compare"), ("get", f"/api/traces/{uuid.uuid4()}")]:
+            assert getattr(client, method)(path).status_code == 401
+            assert getattr(client, method)(path, headers={"x-admin-token": "wrong"}).status_code == 401
+        assert client.post("/api/documents/upload", files={"file": ("a.md", "x")}).status_code == 401
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_report_rate_limit_is_per_client(monkeypatch):
+    from app.api import routes
+    monkeypatch.setattr(settings, "report_rate_limit", 2)
+    monkeypatch.setattr(routes, "_report_times", routes.defaultdict(routes.deque))
+    monkeypatch.setattr(routes, "build_report", lambda *args: (_ for _ in ()).throw(ContentBlocked("x")))
+    app.dependency_overrides[get_db] = lambda: None
+    client = TestClient(app)
+    try:
+        statuses = [client.post("/api/report", json={"story": "사건 설명"},
+                                headers={"x-forwarded-for": "6.6.6.6, 1.1.1.1"}).status_code for _ in range(3)]
+        other = client.post("/api/report", json={"story": "사건 설명"}, headers={"x-forwarded-for": "2.2.2.2"})
+    finally:
+        app.dependency_overrides.clear()
+    assert statuses == [422, 422, 429]  # the forged left-most entry does not give a fresh budget
+    assert other.status_code == 422

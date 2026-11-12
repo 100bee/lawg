@@ -1,0 +1,23 @@
+# Render Blueprint for the Lawg API (free web service). Secrets are prompted once when the Blueprint is created.
+services:
+  - type: web
+    name: lawg-api
+    runtime: docker
+    rootDir: backend  # only changes under backend/ trigger a deploy
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    region: singapore
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: AI_PROVIDER
+        value: gemini
+      - key: FRONTEND_ORIGIN
+        value: https://100bee.github.io
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: DATABASE_URL  # Neon connection string; postgresql:// is accepted
+        sync: false
+      - key: ADMIN_TOKEN  # protects seed/upload/traces/evaluations
+        sync: false

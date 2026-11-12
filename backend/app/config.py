@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,8 +41,21 @@ class Settings(BaseSettings):
     openai_timeout_seconds: float = Field(default=45, gt=0)
     prompt_version: str = "lawg-v1"
     report_retrieval_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
+    # Set ADMIN_TOKEN on any public deployment: seed/upload/traces/evaluations then need X-Admin-Token.
+    admin_token: str | None = None
+    report_rate_limit: int = Field(default=10, ge=1)  # reports per client per window
+    report_rate_window_seconds: int = Field(default=600, ge=1)
     sample_data_dir: str = "data/sources"
     evaluation_dataset_path: str = "data/evaluations.jsonl"
+
+    @field_validator("database_url")
+    @classmethod
+    def use_psycopg_driver(cls, value: str) -> str:
+        # Neon and most hosts hand out postgresql:// or postgres:// URLs; SQLAlchemy needs the psycopg driver named.
+        for prefix in ("postgresql://", "postgres://"):
+            if value.startswith(prefix):
+                return "postgresql+psycopg://" + value[len(prefix):]
+        return value
 
     @property
     def chat_model(self) -> str:
