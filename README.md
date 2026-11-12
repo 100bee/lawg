@@ -54,5 +54,5 @@
 
 FastAPI · SQLAlchemy · PostgreSQL 16 · pgvector · Gemini (`gemini-3.5-flash-lite`, `gemini-embedding-001`) · Next.js · Docker Compose · GitHub Actions
 
-지금 코드를 실행하면 이전 버전 화면이 뜹니다. 실행 방법은 법령 데이터가 들어간 뒤 다시 정리합니다.
+지금 코드를 실행하면 리포트 화면이 시안의 예시 데이터로 뜹니다. 실제 검색과 리포트 생성은 아직 연결하지 않았습니다. 실행 방법은 법령 데이터가 들어간 뒤 다시 정리합니다.
 
